@@ -12,4 +12,7 @@ var (
 	ErrParseStyles           = errors.New("parse styles")
 	ErrDoubleQuote           = errors.New("invalid format string, unmatched double quote")
 	ErrManySections          = errors.New("invalid number format, too many format sections")
+	ErrUnknownCellType       = errors.New("unknown cell type")
+	ErrInvalidBool           = errors.New("invalid value in bool cell")
+	ErrInvalidFormat         = errors.New("invalid or unsupported format")
 )

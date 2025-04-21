@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"io"
 	"strconv"
+	"time"
 
 	"github.com/anfilat/xlsx-sax/internal/xml"
 )
@@ -13,16 +14,30 @@ type Sheet struct {
 	decoder       *xml.Decoder
 	sharedStrings sharedStrings
 	styles        *styleSheet
+	date1904      bool
 	err           error
 
-	cellValue      []byte
-	isSharedString bool
+	cellValue  []byte
+	cellType   cellType
+	cellFormat int
 
 	Row int
 	Col int
 }
 
-func newSheetReader(zipFile *zip.File, sharedStrings sharedStrings, styles *styleSheet) (*Sheet, error) {
+type cellType int
+
+const (
+	cellTypeString cellType = iota
+	cellTypeInline
+	cellTypeFormula
+	cellTypeBool
+	cellTypeError
+	cellTypeDate
+	cellTypeNumeric
+)
+
+func newSheetReader(zipFile *zip.File, sharedStrings sharedStrings, styles *styleSheet, date1904 bool) (*Sheet, error) {
 	reader, err := zipFile.Open()
 	if err != nil {
 		return nil, err
@@ -34,6 +49,7 @@ func newSheetReader(zipFile *zip.File, sharedStrings sharedStrings, styles *styl
 		decoder:       decoder,
 		sharedStrings: sharedStrings,
 		styles:        styles,
+		date1904:      date1904,
 	}
 
 	err = sheet.skipToSheetData()
@@ -116,7 +132,9 @@ func (s *Sheet) NextRow() bool {
 }
 
 func (s *Sheet) NextCell() bool {
-	s.isSharedString = false
+	s.cellType = cellTypeNumeric
+	s.cellFormat = 0
+
 	isV := false
 
 	t, err := s.decoder.Token()
@@ -125,21 +143,42 @@ func (s *Sheet) NextCell() bool {
 		case xml.StartElement:
 			switch token.Name.Local {
 			case "c":
-				cellName := ""
+				cell := ""
 				for _, a := range token.Attr {
 					switch a.Name.Local {
 					case "t":
-						s.isSharedString = a.Value == "s"
+						switch a.Value {
+						case "s":
+							s.cellType = cellTypeString
+						case "inlineStr":
+							s.cellType = cellTypeInline
+						case "b":
+							s.cellType = cellTypeBool
+						case "e":
+							s.cellType = cellTypeError
+						case "str":
+							s.cellType = cellTypeFormula
+						case "d":
+							s.cellType = cellTypeDate
+						case "n":
+							s.cellType = cellTypeNumeric
+						}
+					case "s":
+						s.cellFormat, err = strconv.Atoi(a.Value)
+						if err != nil {
+							s.err = ErrIncorrectSheet
+							return false
+						}
 					case "r":
-						cellName = a.Value
+						cell = a.Value
 					}
 				}
-				if cellName == "" {
+				if cell == "" {
 					s.err = ErrIncorrectSheet
 					return false
 				}
 
-				s.Col = columnIndex(cellName)
+				s.Col = columnIndex(cell)
 			case "v":
 				isV = true
 			}
@@ -161,13 +200,94 @@ func (s *Sheet) NextCell() bool {
 }
 
 func (s *Sheet) CellValue() (string, error) {
-	if s.isSharedString {
-		idx, err := strconv.Atoi(string(s.cellValue))
-		if err != nil {
-			return "", err
-		}
-		return s.sharedStrings.get(idx)
+	if s.cellType == cellTypeString {
+		return s.getSharedString()
 	}
 
 	return string(s.cellValue), nil
+}
+
+func (s *Sheet) CellFloat() (float64, error) {
+	if s.cellType == cellTypeString {
+		str, err := s.getSharedString()
+		if err != nil {
+			return 0, err
+		}
+
+		return strconv.ParseFloat(str, 64)
+	}
+
+	return strconv.ParseFloat(string(s.cellValue), 64)
+}
+
+func (s *Sheet) CellInt() (int, error) {
+	if s.cellType == cellTypeString {
+		str, err := s.getSharedString()
+		if err != nil {
+			return 0, err
+		}
+
+		return strconv.Atoi(str)
+	}
+
+	return strconv.Atoi(string(s.cellValue))
+}
+
+func (s *Sheet) CellTime() (time.Time, error) {
+	val, err := s.CellFloat()
+	if err != nil {
+		return time.Time{}, err
+	}
+	return timeFromExcelTime(val, s.date1904), nil
+}
+
+func (s *Sheet) CellFormatValue() (string, error) {
+	switch s.cellType {
+	case cellTypeString:
+		format := s.styles.getFormat(s.cellFormat)
+		str, err := s.getSharedString()
+		if err != nil {
+			return "", err
+		}
+		val, err := format.text(str)
+		if format.parseEncounteredError != nil {
+			return val, format.parseEncounteredError
+		}
+		return val, err
+	case cellTypeInline, cellTypeFormula:
+		format := s.styles.getFormat(s.cellFormat)
+		val, err := format.text(string(s.cellValue))
+		if format.parseEncounteredError != nil {
+			return val, format.parseEncounteredError
+		}
+		return val, err
+	case cellTypeBool:
+		if string(s.cellValue) == "0" {
+			return "FALSE", nil
+		}
+		if string(s.cellValue) == "1" {
+			return "TRUE", nil
+		}
+		return string(s.cellValue), ErrInvalidBool
+	case cellTypeError, cellTypeDate:
+		return string(s.cellValue), nil
+	case cellTypeNumeric:
+		format := s.styles.getFormat(s.cellFormat)
+		val, err := format.numeric(string(s.cellValue), s.date1904)
+		if format.parseEncounteredError != nil {
+			return val, format.parseEncounteredError
+		}
+		return val, err
+	default:
+		return string(s.cellValue), ErrUnknownCellType
+	}
+}
+
+func (s *Sheet) getSharedString() (string, error) {
+	idx, err := strconv.Atoi(string(s.cellValue))
+	if err != nil {
+		return "", err
+	}
+
+	return s.sharedStrings.get(idx)
 }

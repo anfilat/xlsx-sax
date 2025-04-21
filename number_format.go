@@ -5,6 +5,8 @@ package xlsx
 import (
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 )
 
@@ -397,4 +399,165 @@ func splitFormatAndSuffixFormat(format string) (string, string) {
 	suffixFormat := format[i:]
 	format = format[:i]
 	return format, suffixFormat
+}
+
+func (p *parsedNumFormat) text(value string) (string, error) {
+	textFormat := p.textFormat
+	switch textFormat.reducedFormatString {
+	case "general":
+		return value, nil
+	case "@":
+		return textFormat.prefix + value + textFormat.suffix, nil
+	case "":
+		return textFormat.prefix + textFormat.suffix, nil
+	default:
+		return value, ErrInvalidFormat
+	}
+}
+
+func (p *parsedNumFormat) numeric(value string, date1904 bool) (string, error) {
+	rawValue := strings.TrimSpace(value)
+	if rawValue == "" {
+		return "", nil
+	}
+
+	if p.isTimeFormat {
+		return p.parseTime(rawValue, date1904)
+	}
+	var numberFormat *formatOptions
+	floatVal, floatErr := strconv.ParseFloat(rawValue, 64)
+	if floatErr != nil {
+		return rawValue, floatErr
+	}
+
+	if floatVal > 0 {
+		numberFormat = p.positiveFormat
+	} else if floatVal < 0 {
+		if p.negativeFormatExpectsPositive {
+			floatVal = math.Abs(floatVal)
+		}
+		numberFormat = p.negativeFormat
+	} else {
+		numberFormat = p.zeroFormat
+	}
+
+	if numberFormat.showPercent {
+		floatVal = 100 * floatVal
+	}
+
+	var formattedNum string
+	switch numberFormat.reducedFormatString {
+	case "general":
+		generalFormatted, err := generalNumericScientific(value, true)
+		if err != nil {
+			return rawValue, nil
+		}
+		return generalFormatted, nil
+	case "@":
+		formattedNum = value
+	case "0", "#,##0":
+		formattedNum = fmt.Sprintf("%.0f", floatVal)
+	case "0.0", "#,##0.0":
+		formattedNum = fmt.Sprintf("%.1f", floatVal)
+	case "0.00", "#,##0.00":
+		formattedNum = fmt.Sprintf("%.2f", floatVal)
+	case "0.000", "#,##0.000":
+		formattedNum = fmt.Sprintf("%.3f", floatVal)
+	case "0.0000", "#,##0.0000":
+		formattedNum = fmt.Sprintf("%.4f", floatVal)
+	case "0.00e+00", "##0.0e+0":
+		formattedNum = fmt.Sprintf("%e", floatVal)
+	case "":
+		//
+	default:
+		return rawValue, nil
+	}
+	return numberFormat.prefix + formattedNum + numberFormat.suffix, nil
+}
+
+func (p *parsedNumFormat) parseTime(value string, date1904 bool) (string, error) {
+	f, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return value, err
+	}
+	val := timeFromExcelTime(f, date1904)
+	format := p.positiveFormat.fullFormatString
+	replacements := []struct{ xltime, gotime string }{
+		{"YYYY", "2006"},
+		{"yyyy", "2006"},
+		{"YY", "06"},
+		{"yy", "06"},
+		{"MMMM", "%%%%"},
+		{"mmmm", "%%%%"},
+		{"DDDD", "&&&&"},
+		{"dddd", "&&&&"},
+		{"DD", "02"},
+		{"dd", "02"},
+		{"D", "2"},
+		{"d", "2"},
+		{"MMM", "Jan"},
+		{"mmm", "Jan"},
+		{"MMSS", "0405"},
+		{"mmss", "0405"},
+		{"SS", "05"},
+		{"ss", "05"},
+		{"MM:", "04:"},
+		{"mm:", "04:"},
+		{":MM", ":04"},
+		{":mm", ":04"},
+		{"MM", "01"},
+		{"mm", "01"},
+		{"AM/PM", "pm"},
+		{"am/pm", "pm"},
+		{"M/", "1/"},
+		{"m/", "1/"},
+		{"%%%%", "January"},
+		{"&&&&", "Monday"},
+	}
+	if is12HourTime(format) {
+		format = strings.Replace(format, "hh", "03", 1)
+		format = strings.Replace(format, "h", "3", 1)
+	} else {
+		format = strings.Replace(format, "hh", "15", 1)
+		format = strings.Replace(format, "h", "15", 1)
+	}
+	for _, repl := range replacements {
+		format = strings.Replace(format, repl.xltime, repl.gotime, 1)
+	}
+	if val.Hour() < 1 {
+		format = strings.Replace(format, "]:", "]", 1)
+		format = strings.Replace(format, "[03]", "", 1)
+		format = strings.Replace(format, "[3]", "", 1)
+		format = strings.Replace(format, "[15]", "", 1)
+	} else {
+		format = strings.Replace(format, "[3]", "3", 1)
+		format = strings.Replace(format, "[15]", "15", 1)
+	}
+	return val.Format(format), nil
+}
+
+const (
+	maxNonScientificNumber = 1e11
+	minNonScientificNumber = 1e-9
+)
+
+func generalNumericScientific(value string, allowScientific bool) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", nil
+	}
+	f, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return value, err
+	}
+	if allowScientific {
+		absF := math.Abs(f)
+		if (absF >= math.SmallestNonzeroFloat64 && absF < minNonScientificNumber) || absF >= maxNonScientificNumber {
+			return strconv.FormatFloat(f, 'E', -1, 64), nil
+		}
+	}
+	return strconv.FormatFloat(f, 'f', -1, 64), nil
+}
+
+func is12HourTime(format string) bool {
+	return strings.Contains(format, "am/pm") || strings.Contains(format, "AM/PM") || strings.Contains(format, "a/p") || strings.Contains(format, "A/P")
 }

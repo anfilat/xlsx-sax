@@ -8,8 +8,9 @@ import (
 )
 
 type styleSheet struct {
-	numFormats map[int]string
-	cellXfs    []int
+	numFormats    map[int]string
+	cellXfs       []int
+	parsedFormats map[string]*parsedNumFormat
 }
 
 func readStyleSheet(reader io.Reader) (*styleSheet, error) {
@@ -81,4 +82,28 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 	}
 
 	return &result, nil
+}
+
+func (s *styleSheet) getFormat(idx int) *parsedNumFormat {
+	code := ""
+	if idx >= 0 && idx < len(s.cellXfs) {
+		xf := s.cellXfs[idx]
+		if xf >= 0 && xf <= builtinNumFormatsCount {
+			code = builtinNumFormats[xf]
+		} else {
+			code = s.numFormats[xf]
+		}
+	}
+
+	if code == "" {
+		code = "general"
+	}
+
+	format, ok := s.parsedFormats[code]
+	if !ok {
+		format = parseFullNumberFormatString(code)
+		s.parsedFormats[code] = format
+	}
+
+	return format
 }

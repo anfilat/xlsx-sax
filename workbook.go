@@ -16,8 +16,11 @@ func readWorkbook(reader io.Reader) (*workbook, error) {
 }
 
 type workbook struct {
-	XMLName xml.Name `xml:"workbook"`
-	Sheets  []struct {
+	XMLName    xml.Name `xml:"workbook"`
+	WorkbookPr struct {
+		Date1904 bool `xml:"date1904,attr"`
+	} `xml:"workbookPr"`
+	Sheets []struct {
 		Name    string `xml:"name,attr"`
 		SheetId string `xml:"sheetId,attr"`
 		ID      string `xml:"id,attr"`

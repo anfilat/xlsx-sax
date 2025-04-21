@@ -8,6 +8,7 @@ import (
 
 type Xlsx struct {
 	zip           *zip.Reader
+	date1904      bool
 	sheetFile     []*zip.File
 	sheetNames    []string
 	sheetNameFile map[string]*zip.File
@@ -119,6 +120,8 @@ func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files m
 		return err
 	}
 
+	x.date1904 = wb.WorkbookPr.Date1904
+
 	x.sheetFile = make([]*zip.File, 0, len(wb.Sheets))
 	x.sheetNames = make([]string, 0, len(wb.Sheets))
 	x.sheetNameFile = make(map[string]*zip.File, len(wb.Sheets))
@@ -181,7 +184,7 @@ func (x *Xlsx) OpenSheetByName(name string) (*Sheet, error) {
 		return nil, fmt.Errorf("can not find worksheet %s: %w", name, ErrSheetNotFound)
 	}
 
-	return newSheetReader(file, x.sharedStrings, x.styles)
+	return newSheetReader(file, x.sharedStrings, x.styles, x.date1904)
 }
 
 func (x *Xlsx) OpenSheetByOrder(n int) (*Sheet, error) {
@@ -190,5 +193,5 @@ func (x *Xlsx) OpenSheetByOrder(n int) (*Sheet, error) {
 	}
 
 	file := x.sheetFile[n]
-	return newSheetReader(file, x.sharedStrings, x.styles)
+	return newSheetReader(file, x.sharedStrings, x.styles, x.date1904)
 }
