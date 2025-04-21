@@ -12,13 +12,13 @@ func readSharedStrings(reader io.Reader) ([]string, error) {
 	var result []string
 	isT := false
 	isR := false
-	index := 0
+	str := ""
 	for t, err := decoder.Token(); err == nil; t, err = decoder.Token() {
 		switch token := t.(type) {
 		case xml.StartElement:
 			switch token.Name.Local {
 			case "si":
-			//
+				str = ""
 			case "t":
 				isT = true
 			case "r":
@@ -41,9 +41,9 @@ func readSharedStrings(reader io.Reader) ([]string, error) {
 					}
 				}
 				if uniqCount != 0 {
-					result = make([]string, uniqCount)
+					result = make([]string, 0, uniqCount)
 				} else {
-					result = make([]string, count)
+					result = make([]string, 0, count)
 				}
 			default:
 				_ = decoder.Skip()
@@ -51,7 +51,7 @@ func readSharedStrings(reader io.Reader) ([]string, error) {
 		case xml.EndElement:
 			switch token.Name.Local {
 			case "si":
-				index++
+				result = append(result, str)
 			case "t":
 				isT = false
 			case "r":
@@ -60,9 +60,9 @@ func readSharedStrings(reader io.Reader) ([]string, error) {
 		case xml.CharData:
 			if isT {
 				if isR {
-					result[index] += string(token)
+					str += string(token)
 				} else {
-					result[index] = string(token)
+					str = string(token)
 				}
 			}
 		}
