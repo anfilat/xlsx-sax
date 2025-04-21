@@ -523,7 +523,7 @@ func (d *Decoder) rawToken() (Token, error) {
 	if b != '<' {
 		// Text section.
 		d.ungetc()
-		data := d.text(-1, false)
+		data := d.text(-1)
 		if data == nil {
 			return nil, d.err
 		}
@@ -644,7 +644,7 @@ func (d *Decoder) rawToken() (Token, error) {
 				}
 			}
 			// Have <![CDATA[.  Read text until ]]>.
-			data := d.text(-1, true)
+			data := d.textCData()
 			if data == nil {
 				return nil, d.err
 			}
@@ -801,7 +801,7 @@ func (d *Decoder) attrval() []byte {
 	}
 	// Handle quoted attribute values
 	if b == '"' || b == '\'' {
-		return d.text(int(b), false)
+		return d.text(int(b))
 	}
 	// Handle unquoted attribute values for strict parsers
 	if d.Strict {
@@ -914,20 +914,13 @@ var entity = map[string]rune{
 // If quote >= 0, we are in a quoted string and need to find the matching quote.
 // If cdata == true, we are in a <![CDATA[ section and need to find ]]>.
 // On failure return nil and leave the error in d.err.
-func (d *Decoder) text(quote int, cdata bool) []byte {
+func (d *Decoder) text(quote int) []byte {
 	var b0, b1 byte
-	var trunc int
 	d.buf.Reset()
 Input:
 	for {
 		b, ok := d.getc()
 		if !ok {
-			if cdata {
-				if d.err == io.EOF {
-					d.err = d.syntaxError("unexpected EOF in CDATA section")
-				}
-				return nil
-			}
 			break Input
 		}
 
@@ -935,16 +928,12 @@ Input:
 		// It is an error for ]]> to appear in ordinary text,
 		// but it is allowed in quoted strings.
 		if quote < 0 && b0 == ']' && b1 == ']' && b == '>' {
-			if cdata {
-				trunc = 2
-				break Input
-			}
 			d.err = d.syntaxError("unescaped ]]> not in CDATA section")
 			return nil
 		}
 
 		// Stop reading text if we see a <.
-		if b == '<' && !cdata {
+		if b == '<' {
 			if quote >= 0 {
 				d.err = d.syntaxError("unescaped < inside quoted string")
 				return nil
@@ -955,7 +944,7 @@ Input:
 		if quote >= 0 && b == byte(quote) {
 			break Input
 		}
-		if b == '&' && !cdata {
+		if b == '&' {
 			// Read escaped character expression up to semicolon.
 			// XML in all its glory allows a document to define and use
 			// its own character names with <!ENTITY ...> directives.
@@ -1059,7 +1048,56 @@ Input:
 		b0, b1 = b1, b
 	}
 	data := d.buf.Bytes()
-	data = data[0 : len(data)-trunc]
+
+	// Inspect each rune for being a disallowed character.
+	buf := data
+	for len(buf) > 0 {
+		r, size := utf8.DecodeRune(buf)
+		if r == utf8.RuneError && size == 1 {
+			d.err = d.syntaxError("invalid UTF-8")
+			return nil
+		}
+		buf = buf[size:]
+		if !isInCharacterRange(r) {
+			d.err = d.syntaxError(fmt.Sprintf("illegal character code %U", r))
+			return nil
+		}
+	}
+
+	return data
+}
+
+func (d *Decoder) textCData() []byte {
+	var b0, b1 byte
+	d.buf.Reset()
+	for {
+		b, ok := d.getc()
+		if !ok {
+			if d.err == io.EOF {
+				d.err = d.syntaxError("unexpected EOF in CDATA section")
+			}
+			return nil
+		}
+
+		// <![CDATA[ section ends with ]]>.
+		// It is an error for ]]> to appear in ordinary text.
+		if b0 == ']' && b1 == ']' && b == '>' {
+			break
+		}
+
+		// We must rewrite unescaped \r and \r\n into \n.
+		if b == '\r' {
+			d.buf.WriteByte('\n')
+		} else if b1 == '\r' && b == '\n' {
+			// Skip \r\n--we already wrote \n.
+		} else {
+			d.buf.WriteByte(b)
+		}
+
+		b0, b1 = b1, b
+	}
+	data := d.buf.Bytes()
+	data = data[:len(data)-2]
 
 	// Inspect each rune for being a disallowed character.
 	buf := data
