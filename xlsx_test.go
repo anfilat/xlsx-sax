@@ -99,10 +99,8 @@ func BenchmarkXlsx1(b *testing.B) {
 		xlsx, _ := New(br, br.Size())
 		sheet, _ := xlsx.OpenSheetByOrder(0, []bool{true, true, false, true}, 1)
 
-		var all [][]string
 		for sheet.Next() {
-			row, _ := sheet.Read()
-			all = append(all, row)
+			_, _ = sheet.Read()
 		}
 	}
 }
