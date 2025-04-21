@@ -11,23 +11,34 @@ import (
 type Sheet struct {
 	zipReader     io.ReadCloser
 	decoder       *xml.Decoder
+	cols          []bool
+	colIndex      []int
+	countCols     int
 	sharedStrings []string
 }
 
-type SheetParams struct {
-	Skip int
-}
-
-func newSheetReader(zipFile *zip.File, params *SheetParams, sharedStrings []string) (*Sheet, error) {
+func newSheetReader(zipFile *zip.File, cols []bool, skip int, sharedStrings []string) (*Sheet, error) {
 	reader, err := zipFile.Open()
 	if err != nil {
 		return nil, err
+	}
+
+	countCols := 0
+	colIndex := make([]int, len(cols))
+	for i, value := range cols {
+		if value {
+			colIndex[i] = countCols
+			countCols++
+		}
 	}
 
 	decoder := xml.NewDecoder(reader)
 	sheet := &Sheet{
 		zipReader:     reader,
 		decoder:       decoder,
+		cols:          cols,
+		colIndex:      colIndex,
+		countCols:     countCols,
 		sharedStrings: sharedStrings,
 	}
 
@@ -37,11 +48,9 @@ func newSheetReader(zipFile *zip.File, params *SheetParams, sharedStrings []stri
 		return nil, err
 	}
 
-	if params != nil && params.Skip > 0 {
-		for i := 0; i < params.Skip; i++ {
-			if !sheet.Next() {
-				break
-			}
+	for i := 0; i < skip; i++ {
+		if !sheet.Next() {
+			break
 		}
 	}
 
@@ -84,7 +93,9 @@ func (s *Sheet) Next() bool {
 	return false
 }
 
-func (s *Sheet) Read(row *[]string) error {
+func (s *Sheet) Read() ([]string, error) {
+	result := make([]string, s.countCols)
+
 	isV := false
 	isSharedString := false
 	cellName := ""
@@ -109,7 +120,7 @@ func (s *Sheet) Read(row *[]string) error {
 		case xml.EndElement:
 			isV = false
 			if token.Name.Local == "row" {
-				return nil
+				return result, nil
 			}
 		case xml.CharData:
 			if !isV {
@@ -117,26 +128,29 @@ func (s *Sheet) Read(row *[]string) error {
 			}
 
 			if cellName == "" {
-				return ErrIncorrectSheet
+				return nil, ErrIncorrectSheet
 			}
 
 			columnName := strings.TrimRight(cellName, "0123456789")
-			_ = columnIndex(columnName)
+			ci := columnIndex(columnName)
+			if ci >= len(s.cols) || !s.cols[ci] {
+				break
+			}
 
 			val := string(token)
 			if isSharedString {
 				idx, err := strconv.Atoi(val)
 				if err != nil {
-					return err
+					return nil, err
 				}
 				val = s.sharedStrings[idx]
 			}
 
-			*row = append(*row, val)
+			result[s.colIndex[ci]] = val
 
 			isV = false
 		}
 	}
 
-	return io.EOF
+	return nil, io.EOF
 }

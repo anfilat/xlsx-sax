@@ -17,7 +17,7 @@ func TestNew(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, xlsx.sheetNameFile, 2)
 	require.Len(t, xlsx.sheetFile, 2)
-	require.Len(t, xlsx.sharedStrings, 1)
+	require.Len(t, xlsx.sharedStrings, 7)
 }
 
 func TestOpenSheet(t *testing.T) {
@@ -28,18 +28,19 @@ func TestOpenSheet(t *testing.T) {
 	xlsx, err := New(br, br.Size())
 	require.NoError(t, err)
 
-	sheet, err := xlsx.OpenSheetByOrder(0, &SheetParams{
-		Skip: 1,
-	})
+	sheet, err := xlsx.OpenSheetByOrder(0, []bool{true, true, false, true}, 1)
 	require.NoError(t, err)
 
 	isRow := sheet.Next()
 	require.True(t, isRow)
 
-	var row []string
-	err = sheet.Read(&row)
+	row, err := sheet.Read()
 	require.NoError(t, err)
-	require.Equal(t, []string{"This is text, rich text", "1245237", "something", "5", "Filled"}, row)
+	require.Equal(t, []string{"This is text, rich text", "1245237", "5"}, row)
+
+	row, err = sheet.Read()
+	require.NoError(t, err)
+	require.Equal(t, []string{"The same", "4534567", "0"}, row)
 
 	err = sheet.Close()
 	require.NoError(t, err)
@@ -53,9 +54,7 @@ func TestOpenEmptySheet(t *testing.T) {
 	xlsx, err := New(br, br.Size())
 	require.NoError(t, err)
 
-	sheet, err := xlsx.OpenSheetByOrder(0, &SheetParams{
-		Skip: 1,
-	})
+	sheet, err := xlsx.OpenSheetByOrder(0, []bool{true, true, false, true}, 1)
 	require.NoError(t, err)
 
 	isRow := sheet.Next()
