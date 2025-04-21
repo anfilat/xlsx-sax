@@ -2,6 +2,8 @@ package xlsx
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"testing"
@@ -43,24 +45,69 @@ func TestOpenSheet(t *testing.T) {
 	xlsx, err := New(br, br.Size())
 	require.NoError(t, err)
 
-	sheet, err := xlsx.OpenSheetByOrder(0, []int{0, 1, 3}, SheetParams{Skip: 1})
+	sheet, err := xlsx.OpenSheetByOrder(0)
 	require.NoError(t, err)
 	defer sheet.Close()
 
-	isRow := sheet.Next()
+	err = sheet.SkipRow()
+	require.NoError(t, err)
+
+	isRow := sheet.NextRow()
 	require.True(t, isRow)
 
-	row := make([]string, 3)
-	err = sheet.Read(row)
+	isCell := sheet.NextCell()
+	require.True(t, isCell)
+	val, err := sheet.CellValue()
 	require.NoError(t, err)
-	require.Equal(t, []string{"This is text, rich text", "1245237", "5"}, row)
+	require.Equal(t, 1, sheet.Row)
+	require.Equal(t, 0, sheet.Col)
+	require.Equal(t, "This is text, rich text", val)
 
-	isRow = sheet.Next()
+	isCell = sheet.NextCell()
+	require.True(t, isCell)
+	val, err = sheet.CellValue()
+	require.NoError(t, err)
+	require.Equal(t, 1, sheet.Row)
+	require.Equal(t, 1, sheet.Col)
+	require.Equal(t, "1245237", val)
+
+	isCell = sheet.NextCell()
+	require.True(t, isCell)
+	val, err = sheet.CellValue()
+	require.NoError(t, err)
+	require.Equal(t, 1, sheet.Row)
+	require.Equal(t, 2, sheet.Col)
+	require.Equal(t, "something", val)
+
+	isRow = sheet.NextRow()
 	require.True(t, isRow)
 
-	err = sheet.Read(row)
+	isCell = sheet.NextCell()
+	require.True(t, isCell)
+	val, err = sheet.CellValue()
 	require.NoError(t, err)
-	require.Equal(t, []string{"The same", "4534567", "0"}, row)
+	require.Equal(t, 2, sheet.Row)
+	require.Equal(t, 0, sheet.Col)
+	require.Equal(t, "The same", val)
+
+	isCell = sheet.NextCell()
+	require.True(t, isCell)
+	val, err = sheet.CellValue()
+	require.NoError(t, err)
+	require.Equal(t, 2, sheet.Row)
+	require.Equal(t, 1, sheet.Col)
+	require.Equal(t, "4534567", val)
+
+	isCell = sheet.NextCell()
+	require.True(t, isCell)
+	val, err = sheet.CellValue()
+	require.NoError(t, err)
+	require.Equal(t, 2, sheet.Row)
+	require.Equal(t, 2, sheet.Col)
+	require.Equal(t, "a table", val)
+
+	err = sheet.Err()
+	require.NoError(t, err)
 
 	err = sheet.Close()
 	require.NoError(t, err)
@@ -74,11 +121,11 @@ func TestOpenEmptySheet(t *testing.T) {
 	xlsx, err := New(br, br.Size())
 	require.NoError(t, err)
 
-	sheet, err := xlsx.OpenSheetByOrder(0, []int{0, 1, 3}, SheetParams{Skip: 1})
+	sheet, err := xlsx.OpenSheetByOrder(0)
 	require.NoError(t, err)
 	defer sheet.Close()
 
-	isRow := sheet.Next()
+	isRow := sheet.NextRow()
 	require.False(t, isRow)
 }
 
@@ -90,22 +137,28 @@ func TestReadSheet(t *testing.T) {
 	xlsx, err := New(br, br.Size())
 	require.NoError(t, err)
 
-	sheet, err := xlsx.OpenSheetByOrder(0, []int{0, 1, 3}, SheetParams{Skip: 1})
+	sheet, err := xlsx.OpenSheetByOrder(0)
 	require.NoError(t, err)
 	defer sheet.Close()
 
+	err = sheet.SkipRow()
+	require.NoError(t, err)
+
 	sum := 0
-	row := make([]string, 3)
-	for sheet.Next() {
-		clear(row)
-		err = sheet.Read(row)
-		require.NoError(t, err)
-		if row[2] != "" {
-			n, err := strconv.Atoi(row[2])
-			require.NoError(t, err)
-			sum += n
+	for sheet.NextRow() {
+		for sheet.NextCell() {
+			if sheet.Col == 3 {
+				val, er := sheet.CellValue()
+				require.NoError(t, er)
+
+				n, er := strconv.Atoi(val)
+				require.NoError(t, er)
+				sum += n
+			}
 		}
 	}
+	err = sheet.Err()
+	require.ErrorIs(t, sheet.Err(), io.EOF)
 	require.Equal(t, 5, sum)
 }
 
@@ -117,12 +170,15 @@ func BenchmarkXlsx1(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		xlsx, _ := New(br, br.Size())
-		sheet, _ := xlsx.OpenSheetByOrder(0, []int{0, 1, 3}, SheetParams{Skip: 1})
+		sheet, _ := xlsx.OpenSheetByOrder(0)
 
-		row := make([]string, 3)
-		for sheet.Next() {
-			clear(row)
-			_ = sheet.Read(row)
+		for sheet.NextRow() {
+			for sheet.NextCell() {
+				val, _ := sheet.CellValue()
+				if len(val) > 100000 {
+					fmt.Println(val)
+				}
+			}
 		}
 
 		_ = sheet.Close()

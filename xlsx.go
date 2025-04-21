@@ -142,30 +142,26 @@ func (x *Xlsx) fillSharedStrings(zipFile *zip.File) error {
 	return nil
 }
 
-type SheetParams struct {
-	Skip int
-}
-
 func (x *Xlsx) SheetNames() []string {
 	result := make([]string, len(x.sheetNames))
 	copy(result, x.sheetNames)
 	return result
 }
 
-func (x *Xlsx) OpenSheetByName(name string, cols []int, params SheetParams) (*Sheet, error) {
+func (x *Xlsx) OpenSheetByName(name string) (*Sheet, error) {
 	file, ok := x.sheetNameFile[name]
 	if !ok {
 		return nil, fmt.Errorf("can not find worksheet %s: %w", name, ErrSheetNotFound)
 	}
 
-	return newSheetReader(file, cols, params.Skip, x.sharedStrings)
+	return newSheetReader(file, x.sharedStrings)
 }
 
-func (x *Xlsx) OpenSheetByOrder(n int, cols []int, params SheetParams) (*Sheet, error) {
+func (x *Xlsx) OpenSheetByOrder(n int) (*Sheet, error) {
 	if n < 0 || n >= len(x.sheetFile) {
 		return nil, fmt.Errorf("can not find worksheet %d: %w", n, ErrSheetNotFound)
 	}
 
 	file := x.sheetFile[n]
-	return newSheetReader(file, cols, params.Skip, x.sharedStrings)
+	return newSheetReader(file, x.sharedStrings)
 }

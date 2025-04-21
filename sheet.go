@@ -3,7 +3,6 @@ package xlsx
 import (
 	"archive/zip"
 	"io"
-	"sort"
 	"strconv"
 
 	"github.com/anfilat/xlsx-sax/internal/xml"
@@ -12,28 +11,17 @@ import (
 type Sheet struct {
 	zipReader     io.ReadCloser
 	decoder       *xml.Decoder
-	colGet        []bool
-	colMap        []int
-	countCols     int
 	sharedStrings []string
+	err           error
+
+	cellValue      []byte
+	isSharedString bool
+
+	Row int
+	Col int
 }
 
-func newSheetReader(zipFile *zip.File, cols []int, skip int, sharedStrings []string) (*Sheet, error) {
-	if len(cols) == 0 {
-		return nil, ErrNoColumns
-	}
-
-	sort.Ints(cols)
-
-	colGet := make([]bool, cols[len(cols)-1]+1)
-	colMap := make([]int, cols[len(cols)-1]+1)
-	countCols := 0
-	for _, value := range cols {
-		colGet[value] = true
-		colMap[value] = countCols
-		countCols++
-	}
-
+func newSheetReader(zipFile *zip.File, sharedStrings []string) (*Sheet, error) {
 	reader, err := zipFile.Open()
 	if err != nil {
 		return nil, err
@@ -43,9 +31,6 @@ func newSheetReader(zipFile *zip.File, cols []int, skip int, sharedStrings []str
 	sheet := &Sheet{
 		zipReader:     reader,
 		decoder:       decoder,
-		colGet:        colGet,
-		colMap:        colMap,
-		countCols:     countCols,
 		sharedStrings: sharedStrings,
 	}
 
@@ -53,12 +38,6 @@ func newSheetReader(zipFile *zip.File, cols []int, skip int, sharedStrings []str
 	if err != nil {
 		_ = reader.Close()
 		return nil, err
-	}
-
-	for i := 0; i < skip; i++ {
-		if !sheet.Next() {
-			break
-		}
 	}
 
 	return sheet, nil
@@ -74,8 +53,8 @@ func (s *Sheet) skipToSheetData() error {
 			case "sheetData":
 				return nil
 			default:
-				if err := s.decoder.Skip(); err != nil {
-					return err
+				if er := s.decoder.Skip(); er != nil {
+					return er
 				}
 			}
 		}
@@ -87,11 +66,37 @@ func (s *Sheet) Close() error {
 	return s.zipReader.Close()
 }
 
-func (s *Sheet) Next() bool {
-	for t, err := s.decoder.Token(); err == nil; t, err = s.decoder.Token() {
+func (s *Sheet) Err() error {
+	return s.err
+}
+
+func (s *Sheet) SkipRow() error {
+	s.NextRow()
+	return s.err
+}
+
+func (s *Sheet) NextRow() bool {
+	if s.err != nil {
+		return false
+	}
+
+	t, err := s.decoder.Token()
+	for err == nil {
 		switch token := t.(type) {
 		case xml.StartElement:
 			if token.Name.Local == "row" {
+				for _, a := range token.Attr {
+					if a.Name.Local == "r" {
+						row, er := strconv.Atoi(a.Value)
+						if er != nil {
+							s.err = er
+							return false
+						}
+						s.Row = row - 1
+						s.Col = 0
+						break
+					}
+				}
 				return true
 			}
 		case xml.EndElement:
@@ -99,65 +104,67 @@ func (s *Sheet) Next() bool {
 				return false
 			}
 		}
+
+		t, err = s.decoder.Token()
 	}
+
+	s.err = err
 	return false
 }
 
-func (s *Sheet) Read(row []string) error {
+func (s *Sheet) NextCell() bool {
+	s.isSharedString = false
 	isV := false
-	isSharedString := false
-	ci := -1
-	for t, err := s.decoder.Token(); err == nil; t, err = s.decoder.Token() {
+
+	t, err := s.decoder.Token()
+	for err == nil {
 		switch token := t.(type) {
 		case xml.StartElement:
 			switch token.Name.Local {
 			case "c":
-				isSharedString = false
-				ci = -1
 				cellName := ""
 				for _, a := range token.Attr {
 					switch a.Name.Local {
 					case "t":
-						isSharedString = a.Value == "s"
+						s.isSharedString = a.Value == "s"
 					case "r":
 						cellName = a.Value
 					}
 				}
 				if cellName == "" {
-					return ErrIncorrectSheet
+					s.err = ErrIncorrectSheet
+					return false
 				}
 
-				ci = columnIndex(cellName)
+				s.Col = columnIndex(cellName)
 			case "v":
 				isV = true
-			}
-		case xml.EndElement:
-			isV = false
-			if token.Name.Local == "row" {
-				return nil
 			}
 		case xml.CharData:
 			if !isV {
 				break
 			}
 
-			if ci >= len(s.colGet) || !s.colGet[ci] {
-				break
-			}
+			s.cellValue = token
 
-			if isSharedString {
-				idx, err := strconv.Atoi(string(token))
-				if err != nil {
-					return err
-				}
-				row[s.colMap[ci]] = s.sharedStrings[idx]
-			} else {
-				row[s.colMap[ci]] = string(token)
-			}
-
-			isV = false
+			return true
 		}
+
+		t, err = s.decoder.Token()
 	}
 
-	return io.EOF
+	s.err = err
+	return false
+}
+
+func (s *Sheet) CellValue() (string, error) {
+	if s.isSharedString {
+		idx, err := strconv.Atoi(string(s.cellValue))
+		if err != nil {
+			return "", err
+		}
+		return s.sharedStrings[idx], nil
+	}
+
+	return string(s.cellValue), nil
 }
