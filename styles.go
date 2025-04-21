@@ -1,44 +1,84 @@
 package xlsx
 
 import (
-	"encoding/xml"
 	"io"
+	"strconv"
+
+	"github.com/anfilat/xlsx-sax/internal/xml"
 )
 
 func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 	decoder := xml.NewDecoder(reader)
-	data := &styleSheet{}
-	err := decoder.Decode(data)
-	if err != nil {
-		return nil, err
+
+	result := styleSheet{
+		numFormats: make(map[int]string),
 	}
 
-	if data.NumFmts != nil {
-		data.numFormats = make(map[int]string, len(data.NumFmts.NumFmt))
+	isNumFmts := false
+	isCellXfs := false
+	for t, err := decoder.Token(); err == nil; t, err = decoder.Token() {
+		switch token := t.(type) {
+		case xml.StartElement:
+			switch token.Name.Local {
+			case "numFmts":
+				isNumFmts = true
+			case "numFmt":
+				if isNumFmts {
+					id := 0
+					code := ""
+					for _, attr := range token.Attr {
+						switch attr.Name.Local {
+						case "formatCode":
+							code = attr.Value
+						case "numFmtId":
+							id, err = strconv.Atoi(attr.Value)
+							if err != nil {
+								return nil, err
+							}
+						}
+					}
 
-		for _, format := range data.NumFmts.NumFmt {
-			data.numFormats[format.NumFmtId] = format.FormatCode
+					if id == 0 || code == "" {
+						return nil, ErrParseStyles
+					}
+
+					result.numFormats[id] = code
+				}
+			case "cellXfs":
+				isCellXfs = true
+			case "xf":
+				if isCellXfs {
+					id := 0
+					for _, attr := range token.Attr {
+						switch attr.Name.Local {
+						case "numFmtId":
+							id, err = strconv.Atoi(attr.Value)
+							if err != nil {
+								return nil, err
+							}
+						}
+					}
+					result.cellXfs = append(result.cellXfs, id)
+				}
+			case "styleSheet":
+				//
+			default:
+				_ = decoder.Skip()
+			}
+		case xml.EndElement:
+			switch token.Name.Local {
+			case "numFmts":
+				isNumFmts = false
+			case "cellXfs":
+				isCellXfs = false
+			}
 		}
 	}
 
-	return data, nil
+	return &result, nil
 }
 
 type styleSheet struct {
-	XMLName xml.Name `xml:"styleSheet"`
-	NumFmts *struct {
-		Count  int `xml:"count,attr"`
-		NumFmt []struct {
-			NumFmtId   int    `xml:"numFmtId,attr"`
-			FormatCode string `xml:"formatCode,attr"`
-		} `xml:"numFmt"`
-	} `xml:"numFmts"`
-	CellXfs struct {
-		Count int `xml:"count,attr"`
-		Xf    []struct {
-			NumFmtId int `xml:"numFmtId,attr"`
-		} `xml:"xf"`
-	} `xml:"cellXfs"`
-
 	numFormats map[int]string
+	cellXfs    []int
 }

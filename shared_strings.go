@@ -1,9 +1,10 @@
 package xlsx
 
 import (
-	"github.com/anfilat/xlsx-sax/internal/xml"
 	"io"
 	"strconv"
+
+	"github.com/anfilat/xlsx-sax/internal/xml"
 )
 
 type sharedStrings []string

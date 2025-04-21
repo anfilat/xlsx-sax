@@ -9,4 +9,5 @@ var (
 	ErrSheetNotFound         = errors.New("sheet not found")
 	ErrIncorrectSheet        = errors.New("incorrect sheet")
 	ErrIncorrectSharedString = errors.New("incorrect shared string")
+	ErrParseStyles           = errors.New("parse styles")
 )
