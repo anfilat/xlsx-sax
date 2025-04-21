@@ -434,15 +434,15 @@ func (d *Decoder) rawToken() (*Token, error) {
 		d.ungetc()
 		data := d.text(-1)
 		if data == nil {
-			return nil, d.err
+			return nil, d.unexpectedEOF()
 		}
 		d.token.reset(CharData)
 		d.token.Value = data
 		return d.token, nil
 	}
 
-	if b, ok = d.mustgetc(); !ok {
-		return nil, d.err
+	if b, ok = d.getc(); !ok {
+		return nil, d.unexpectedEOF()
 	}
 	switch b {
 	case '/':
@@ -455,8 +455,8 @@ func (d *Decoder) rawToken() (*Token, error) {
 			return nil, d.err
 		}
 		d.space()
-		if b, ok = d.mustgetc(); !ok {
-			return nil, d.err
+		if b, ok = d.getc(); !ok {
+			return nil, d.unexpectedEOF()
 		}
 		if b != '>' {
 			d.err = d.syntaxError("invalid characters between </" + name.Local + " and >")
@@ -479,8 +479,8 @@ func (d *Decoder) rawToken() (*Token, error) {
 		d.buf.Reset()
 		var b0 byte
 		for {
-			if b, ok = d.mustgetc(); !ok {
-				return nil, d.err
+			if b, ok = d.getc(); !ok {
+				return nil, d.unexpectedEOF()
 			}
 			d.buf.WriteByte(b)
 			if b0 == '?' && b == '>' {
@@ -511,14 +511,14 @@ func (d *Decoder) rawToken() (*Token, error) {
 
 	case '!':
 		// <!: Maybe comment, maybe CDATA.
-		if b, ok = d.mustgetc(); !ok {
-			return nil, d.err
+		if b, ok = d.getc(); !ok {
+			return nil, d.unexpectedEOF()
 		}
 		switch b {
 		case '-': // <!-
 			// Probably <!-- for a comment.
-			if b, ok = d.mustgetc(); !ok {
-				return nil, d.err
+			if b, ok = d.getc(); !ok {
+				return nil, d.unexpectedEOF()
 			}
 			if b != '-' {
 				d.err = d.syntaxError("invalid sequence <!- not part of <!--")
@@ -528,8 +528,8 @@ func (d *Decoder) rawToken() (*Token, error) {
 			d.buf.Reset()
 			var b0, b1 byte
 			for {
-				if b, ok = d.mustgetc(); !ok {
-					return nil, d.err
+				if b, ok = d.getc(); !ok {
+					return nil, d.unexpectedEOF()
 				}
 				d.buf.WriteByte(b)
 				if b0 == '-' && b1 == '-' {
@@ -551,8 +551,8 @@ func (d *Decoder) rawToken() (*Token, error) {
 		case '[': // <![
 			// Probably <![CDATA[.
 			for i := 0; i < 6; i++ {
-				if b, ok = d.mustgetc(); !ok {
-					return nil, d.err
+				if b, ok = d.getc(); !ok {
+					return nil, d.unexpectedEOF()
 				}
 				if b != "CDATA["[i] {
 					d.err = d.syntaxError("invalid <![ sequence")
@@ -577,8 +577,8 @@ func (d *Decoder) rawToken() (*Token, error) {
 		inquote := uint8(0)
 		depth := 0
 		for {
-			if b, ok = d.mustgetc(); !ok {
-				return nil, d.err
+			if b, ok = d.getc(); !ok {
+				return nil, d.unexpectedEOF()
 			}
 			if inquote == 0 && b == '>' && depth == 0 {
 				break
@@ -602,8 +602,8 @@ func (d *Decoder) rawToken() (*Token, error) {
 				// Look for <!-- to begin comment.
 				s := "!--"
 				for i := 0; i < len(s); i++ {
-					if b, ok = d.mustgetc(); !ok {
-						return nil, d.err
+					if b, ok = d.getc(); !ok {
+						return nil, d.unexpectedEOF()
 					}
 					if b != s[i] {
 						for j := 0; j < i; j++ {
@@ -620,8 +620,8 @@ func (d *Decoder) rawToken() (*Token, error) {
 				// Look for terminator.
 				var b0, b1 byte
 				for {
-					if b, ok = d.mustgetc(); !ok {
-						return nil, d.err
+					if b, ok = d.getc(); !ok {
+						return nil, d.unexpectedEOF()
 					}
 					if b0 == '-' && b1 == '-' && b == '>' {
 						break
@@ -659,13 +659,13 @@ func (d *Decoder) rawToken() (*Token, error) {
 	d.token.Name = name
 	for {
 		d.space()
-		if b, ok = d.mustgetc(); !ok {
-			return nil, d.err
+		if b, ok = d.getc(); !ok {
+			return nil, d.unexpectedEOF()
 		}
 		if b == '/' {
 			empty = true
-			if b, ok = d.mustgetc(); !ok {
-				return nil, d.err
+			if b, ok = d.getc(); !ok {
+				return nil, d.unexpectedEOF()
 			}
 			if b != '>' {
 				d.err = d.syntaxError("expected /> in element")
@@ -686,8 +686,8 @@ func (d *Decoder) rawToken() (*Token, error) {
 			return nil, d.err
 		}
 		d.space()
-		if b, ok = d.mustgetc(); !ok {
-			return nil, d.err
+		if b, ok = d.getc(); !ok {
+			return nil, d.unexpectedEOF()
 		}
 		if b != '=' {
 			d.err = d.syntaxError("attribute name without = in element")
@@ -696,7 +696,7 @@ func (d *Decoder) rawToken() (*Token, error) {
 		d.space()
 		attrValue := d.attrval()
 		if attrValue == nil {
-			return nil, d.err
+			return nil, d.unexpectedEOF()
 		}
 
 		var attrs []TagAttr
@@ -728,7 +728,7 @@ func (d *Decoder) rawToken() (*Token, error) {
 }
 
 func (d *Decoder) attrval() []byte {
-	b, ok := d.mustgetc()
+	b, ok := d.getc()
 	if !ok {
 		return nil
 	}
@@ -767,17 +767,11 @@ func (d *Decoder) space() {
 	}
 }
 
-// Must read a single byte.
-// If there is no byte to read,
-// set d.err to SyntaxError("unexpected EOF")
-// and return ok==false
-func (d *Decoder) mustgetc() (b byte, ok bool) {
-	if b, ok = d.getc(); !ok {
-		if d.err == io.EOF {
-			d.err = d.syntaxError("unexpected EOF")
-		}
+func (d *Decoder) unexpectedEOF() error {
+	if d.err == io.EOF {
+		d.err = d.syntaxError("unexpected EOF")
 	}
-	return
+	return d.err
 }
 
 // Read a single byte.
@@ -892,19 +886,19 @@ Input:
 			var ok bool
 			var text string
 			var haveText bool
-			if b, ok = d.mustgetc(); !ok {
+			if b, ok = d.getc(); !ok {
 				return nil
 			}
 			if b == '#' {
 				d.buf.WriteByte(b)
-				if b, ok = d.mustgetc(); !ok {
+				if b, ok = d.getc(); !ok {
 					return nil
 				}
 				base := 10
 				if b == 'x' {
 					base = 16
 					d.buf.WriteByte(b)
-					if b, ok = d.mustgetc(); !ok {
+					if b, ok = d.getc(); !ok {
 						return nil
 					}
 				}
@@ -913,7 +907,7 @@ Input:
 					base == 16 && 'a' <= b && b <= 'f' ||
 					base == 16 && 'A' <= b && b <= 'F' {
 					d.buf.WriteByte(b)
-					if b, ok = d.mustgetc(); !ok {
+					if b, ok = d.getc(); !ok {
 						return nil
 					}
 				}
@@ -935,7 +929,7 @@ Input:
 						return nil
 					}
 				}
-				if b, ok = d.mustgetc(); !ok {
+				if b, ok = d.getc(); !ok {
 					return nil
 				}
 				if b != ';' {
@@ -1077,11 +1071,18 @@ func (d *Decoder) nsname() (name Name, ok bool) {
 // Do not set d.err if the name is missing (unless unexpected EOF is received):
 // let the caller provide better context.
 func (d *Decoder) name() (s string, ok bool) {
+	if d.err != nil {
+		return "", false
+	}
+
 	p := d.dataR
 	for {
-		if d.err == nil && p == d.dataW {
+		if p == d.dataW {
 			p -= d.dataR
 			d.fillData()
+			if d.err != nil {
+				return "", false
+			}
 		}
 
 		if d.err != nil {
