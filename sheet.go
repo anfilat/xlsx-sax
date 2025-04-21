@@ -12,7 +12,7 @@ type Sheet struct {
 	zipReader     io.ReadCloser
 	decoder       *xml.Decoder
 	sharedStrings sharedStrings
-	styles        *styles
+	styles        *styleSheet
 	err           error
 
 	cellValue      []byte
@@ -22,7 +22,7 @@ type Sheet struct {
 	Col int
 }
 
-func newSheetReader(zipFile *zip.File, sharedStrings sharedStrings, styles *styles) (*Sheet, error) {
+func newSheetReader(zipFile *zip.File, sharedStrings sharedStrings, styles *styleSheet) (*Sheet, error) {
 	reader, err := zipFile.Open()
 	if err != nil {
 		return nil, err

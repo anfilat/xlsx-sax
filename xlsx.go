@@ -12,7 +12,7 @@ type Xlsx struct {
 	sheetNames    []string
 	sheetNameFile map[string]*zip.File
 	sharedStrings sharedStrings
-	styles        *styles
+	styles        *styleSheet
 }
 
 func New(reader io.ReaderAt, size int64) (*Xlsx, error) {
@@ -162,7 +162,7 @@ func (x *Xlsx) fillStyles(zipFile *zip.File) error {
 	}
 	defer reader.Close()
 
-	x.styles, err = readStyles(reader)
+	x.styles, err = readStyleSheet(reader)
 	if err != nil {
 		return err
 	}
