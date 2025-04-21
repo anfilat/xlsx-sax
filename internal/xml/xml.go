@@ -24,12 +24,11 @@ import (
 
 // A SyntaxError represents a syntax error in the XML input stream.
 type SyntaxError struct {
-	Msg  string
-	Line int
+	Msg string
 }
 
 func (e *SyntaxError) Error() string {
-	return "XML syntax error on line " + strconv.Itoa(e.Line) + ": " + e.Msg
+	return "XML syntax error: " + e.Msg
 }
 
 // A Name represents an XML name (Local) annotated
@@ -57,14 +56,6 @@ type StartElement struct {
 	Attr []Attr
 }
 
-// Copy creates a new copy of StartElement.
-func (e StartElement) Copy() StartElement {
-	attrs := make([]Attr, len(e.Attr))
-	copy(attrs, e.Attr)
-	e.Attr = attrs
-	return e
-}
-
 // End returns the corresponding XML end element.
 func (e StartElement) End() EndElement {
 	return EndElement{e.Name}
@@ -82,17 +73,9 @@ type CharData struct {
 	Value []byte
 }
 
-// Copy creates a new copy of CharData.
-func (c CharData) Copy() CharData {
-	return CharData{Value: bytes.Clone(c.Value)}
-}
-
 // A Comment represents an XML comment of the form <!--comment-->.
 // The bytes do not include the <!-- and --> comment markers.
 type Comment []byte
-
-// Copy creates a new copy of Comment.
-func (c Comment) Copy() Comment { return Comment(bytes.Clone(c)) }
 
 // A ProcInst represents an XML processing instruction of the form <?target inst?>
 type ProcInst struct {
@@ -100,18 +83,9 @@ type ProcInst struct {
 	Inst   []byte
 }
 
-// Copy creates a new copy of ProcInst.
-func (p ProcInst) Copy() ProcInst {
-	p.Inst = bytes.Clone(p.Inst)
-	return p
-}
-
 // A Directive represents an XML directive of the form <!text>.
 // The bytes do not include the <! and > markers.
 type Directive []byte
-
-// Copy creates a new copy of Directive.
-func (d Directive) Copy() Directive { return Directive(bytes.Clone(d)) }
 
 // A TokenReader is anything that can decode a stream of XML tokens, including a
 // [Decoder].
@@ -187,7 +161,6 @@ type Decoder struct {
 	r              io.ByteReader
 	t              TokenReader
 	buf            bytes.Buffer
-	saved          *bytes.Buffer
 	stk            *stack
 	free           *stack
 	needClose      bool
@@ -196,8 +169,6 @@ type Decoder struct {
 	nextByte       int
 	ns             map[string]string
 	err            error
-	line           int
-	linestart      int64
 	offset         int64
 	unmarshalDepth int
 	startElement   *StartElement
@@ -212,7 +183,6 @@ func NewDecoder(r io.Reader) *Decoder {
 	d := &Decoder{
 		ns:           make(map[string]string),
 		nextByte:     -1,
-		line:         1,
 		Strict:       true,
 		startElement: &StartElement{},
 		endElement:   &EndElement{},
@@ -467,7 +437,7 @@ func (d *Decoder) pushNs(local string, url string, ok bool) {
 
 // Creates a SyntaxError with the current line number.
 func (d *Decoder) syntaxError(msg string) error {
-	return &SyntaxError{Msg: msg, Line: d.line}
+	return &SyntaxError{Msg: msg}
 }
 
 // Record that we are ending an element with the given name.
@@ -921,13 +891,6 @@ func (d *Decoder) getc() (b byte, ok bool) {
 		if d.err != nil {
 			return 0, false
 		}
-		if d.saved != nil {
-			d.saved.WriteByte(b)
-		}
-	}
-	if b == '\n' {
-		d.line++
-		d.linestart = d.offset + 1
 	}
 	d.offset++
 	return b, true
@@ -938,23 +901,6 @@ func (d *Decoder) getc() (b byte, ok bool) {
 // and the beginning of the next token.
 func (d *Decoder) InputOffset() int64 {
 	return d.offset
-}
-
-// InputPos returns the line of the current decoder position and the 1 based
-// input position of the line. The position gives the location of the end of the
-// most recently returned token.
-func (d *Decoder) InputPos() (line, column int) {
-	return d.line, int(d.offset-d.linestart) + 1
-}
-
-// Return saved offset.
-// If we did ungetc (nextByte >= 0), have to back up one.
-func (d *Decoder) savedOffset() int {
-	n := d.saved.Len()
-	if d.nextByte >= 0 {
-		n--
-	}
-	return n
 }
 
 // Must read a single byte.
@@ -972,9 +918,6 @@ func (d *Decoder) mustgetc() (b byte, ok bool) {
 
 // Unread a single byte.
 func (d *Decoder) ungetc(b byte) {
-	if b == '\n' {
-		d.line--
-	}
 	d.nextByte = int(b)
 	d.offset--
 }
