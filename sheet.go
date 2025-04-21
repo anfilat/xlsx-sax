@@ -103,9 +103,7 @@ func (s *Sheet) Next() bool {
 	return false
 }
 
-func (s *Sheet) Read() ([]string, error) {
-	result := make([]string, s.countCols)
-
+func (s *Sheet) Read(row []string) error {
 	isV := false
 	isSharedString := false
 	ci := -1
@@ -126,7 +124,7 @@ func (s *Sheet) Read() ([]string, error) {
 					}
 				}
 				if cellName == "" {
-					return nil, ErrIncorrectSheet
+					return ErrIncorrectSheet
 				}
 
 				ci = columnIndex(cellName)
@@ -136,7 +134,7 @@ func (s *Sheet) Read() ([]string, error) {
 		case xml.EndElement:
 			isV = false
 			if token.Name.Local == "row" {
-				return result, nil
+				return nil
 			}
 		case xml.CharData:
 			if !isV {
@@ -151,16 +149,16 @@ func (s *Sheet) Read() ([]string, error) {
 			if isSharedString {
 				idx, err := strconv.Atoi(val)
 				if err != nil {
-					return nil, err
+					return err
 				}
 				val = s.sharedStrings[idx]
 			}
 
-			result[s.colMap[ci]] = val
+			row[s.colMap[ci]] = val
 
 			isV = false
 		}
 	}
 
-	return nil, io.EOF
+	return io.EOF
 }

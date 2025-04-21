@@ -36,14 +36,15 @@ func TestOpenSheet(t *testing.T) {
 	isRow := sheet.Next()
 	require.True(t, isRow)
 
-	row, err := sheet.Read()
+	row := make([]string, 3)
+	err = sheet.Read(row)
 	require.NoError(t, err)
 	require.Equal(t, []string{"This is text, rich text", "1245237", "5"}, row)
 
 	isRow = sheet.Next()
 	require.True(t, isRow)
 
-	row, err = sheet.Read()
+	err = sheet.Read(row)
 	require.NoError(t, err)
 	require.Equal(t, []string{"The same", "4534567", "0"}, row)
 
@@ -80,8 +81,12 @@ func TestReadSheet(t *testing.T) {
 	defer sheet.Close()
 
 	sum := 0
+	row := make([]string, 3)
 	for sheet.Next() {
-		row, err := sheet.Read()
+		for j := 0; j < 3; j++ {
+			row[j] = ""
+		}
+		err = sheet.Read(row)
 		require.NoError(t, err)
 		if row[2] != "" {
 			n, err := strconv.Atoi(row[2])
@@ -102,8 +107,12 @@ func BenchmarkXlsx1(b *testing.B) {
 		xlsx, _ := New(br, br.Size())
 		sheet, _ := xlsx.OpenSheetByOrder(0, []int{0, 1, 3}, SheetParams{Skip: 1})
 
+		row := make([]string, 3)
 		for sheet.Next() {
-			_, _ = sheet.Read()
+			for j := 0; j < 3; j++ {
+				row[j] = ""
+			}
+			_ = sheet.Read(row)
 		}
 
 		_ = sheet.Close()
