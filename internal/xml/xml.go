@@ -965,14 +965,11 @@ Input:
 				} else {
 					name := d.buf.Bytes()[before+1:]
 					d.buf.WriteByte(';')
-					if isName(name) {
-						s := string(name)
-						if r, ok := entity[s]; ok {
-							text = r
-							haveText = true
-						} else if d.Entity != nil {
-							text, haveText = d.Entity[s]
-						}
+					if r, ok := entity[string(name)]; ok {
+						text = r
+						haveText = true
+					} else if d.Entity != nil && isName(name) {
+						text, haveText = d.Entity[string(name)]
 					}
 				}
 			}
