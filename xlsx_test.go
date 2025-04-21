@@ -97,9 +97,7 @@ func TestReadSheet(t *testing.T) {
 	sum := 0
 	row := make([]string, 3)
 	for sheet.Next() {
-		for j := 0; j < 3; j++ {
-			row[j] = ""
-		}
+		clear(row)
 		err = sheet.Read(row)
 		require.NoError(t, err)
 		if row[2] != "" {
@@ -123,9 +121,7 @@ func BenchmarkXlsx1(b *testing.B) {
 
 		row := make([]string, 3)
 		for sheet.Next() {
-			for j := 0; j < 3; j++ {
-				row[j] = ""
-			}
+			clear(row)
 			_ = sheet.Read(row)
 		}
 
