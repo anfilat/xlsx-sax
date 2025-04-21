@@ -110,12 +110,12 @@ func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files m
 	for _, sheet := range wb.Sheets {
 		path, ok := sheets[sheet.ID]
 		if !ok {
-			return fmt.Errorf("sheet RID %s doesn't found: %w", sheet.ID, ErrSheetNotFound)
+			return fmt.Errorf("sheet RID %s doesn't found: %w", sheet.ID, ErrParseWorkbook)
 		}
 
 		file, ok := files[path]
 		if !ok {
-			return fmt.Errorf("sheet %s doesn't exist: %w", path, ErrSheetNotExist)
+			return fmt.Errorf("sheet %s doesn't exist: %w", path, ErrParseWorkbook)
 		}
 
 		x.sheetFile = append(x.sheetFile, file)
@@ -137,4 +137,22 @@ func (x *Xlsx) fillSharedStrings(zipFile *zip.File) error {
 		return err
 	}
 	return nil
+}
+
+func (x *Xlsx) OpenSheetByName(name string, params *SheetParams) (*Sheet, error) {
+	file, ok := x.sheetNameFile[name]
+	if !ok {
+		return nil, fmt.Errorf("can not find worksheet %s: %w", name, ErrSheetNotFound)
+	}
+
+	return newSheetReader(file, params, x.sharedStrings)
+}
+
+func (x *Xlsx) OpenSheetByOrder(n int, params *SheetParams) (*Sheet, error) {
+	if n < 0 || n >= len(x.sheetFile) {
+		return nil, fmt.Errorf("can not find worksheet %d: %w", n, ErrSheetNotFound)
+	}
+
+	file := x.sheetFile[n]
+	return newSheetReader(file, params, x.sharedStrings)
 }
