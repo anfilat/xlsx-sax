@@ -271,8 +271,10 @@ func skipToRune(runes []rune, r rune) (int, error) {
 	return -1, ErrNoClosingQuote
 }
 
-var timeFormatCharacters = []string{"M", "D", "Y", "YY", "YYYY", "MM", "yyyy", "m", "d", "yy", "h", "m", "AM/PM", "A/P", "am/pm", "a/p", "r", "g", "e", "b1", "b2", "[hh]", "[h]", "[mm]", "[m]",
-	"s.0000", "s.000", "s.00", "s.0", "s", "[ss].0000", "[ss].000", "[ss].00", "[ss].0", "[ss]", "[s].0000", "[s].000", "[s].00", "[s].0", "[s]", "上", "午", "下"}
+var timeFormatCharacters = []string{
+	"M", "D", "Y", "YY", "YYYY", "MM", "yyyy", "m", "d", "yy", "h", "m", "AM/PM", "A/P", "am/pm", "a/p", "r", "g", "e", "b1", "b2", "[hh]", "[h]", "[mm]", "[m]",
+	"s.0000", "s.000", "s.00", "s.0", "s", "[ss].0000", "[ss].000", "[ss].00", "[ss].0", "[ss]", "[s].0000", "[s].000", "[s].00", "[s].0", "[s]", "上", "午", "下",
+}
 
 func parseLiterals(format string) (string, string, bool, error) {
 	var prefix string
@@ -312,6 +314,9 @@ func parseLiterals(format string) (string, string, bool, error) {
 				} else {
 					return "", "", false, ErrInvalidCurrency
 				}
+			}
+			if curReducedFormat[1] == '=' || curReducedFormat[1] == '>' || curReducedFormat[1] == '<' {
+				return "", "", false, fmt.Errorf("unsupported formatting code: %s", format)
 			}
 			i += bracketIndex
 		case '$', '-', '+', '/', '(', ')', ':', '!', '^', '&', '\'', '~', '{', '}', '<', '>', '=', ' ':
@@ -420,6 +425,9 @@ func (p *parsedNumFormat) numeric(value string, date1904 bool) (string, error) {
 	case "":
 		//
 	default:
+		if cntZeros := strings.Count(numberFormat.reducedFormatString, "0"); cntZeros == len(numberFormat.reducedFormatString) && cntZeros > len(rawValue) {
+			return numberFormat.reducedFormatString[:cntZeros-len(rawValue)] + rawValue, nil
+		}
 		return rawValue, nil
 	}
 	return numberFormat.prefix + formattedNum + numberFormat.suffix, nil
