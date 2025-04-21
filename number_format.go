@@ -3,7 +3,6 @@ package xlsx
 // Most of this file was taken from https://github.com/tealeg/xlsx
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -109,11 +108,6 @@ func parseFullNumberFormatString(numFmt string) *parsedNumFormat {
 			parsedNumFmt.textFormat, _ = parseNumberFormatSection("general")
 		}
 	} else if len(fmtOptions) == 2 {
-		// If there are two formats, the first is used for positive and zeros, the second gets used as a negative format,
-		// and strings are not formatted.
-		// When negative numbers now have their own format, they should become positive before having the format applied.
-		// The format will contain a negative sign if it is desired, but they may be colored red or wrapped in
-		// parenthesis instead.
 		parsedNumFmt.isTimeFormat = fmtOptions[0].isTimeFormat
 		parsedNumFmt.negativeFormatExpectsPositive = true
 		parsedNumFmt.positiveFormat = fmtOptions[0]
@@ -121,8 +115,6 @@ func parseFullNumberFormatString(numFmt string) *parsedNumFormat {
 		parsedNumFmt.zeroFormat = fmtOptions[0]
 		parsedNumFmt.textFormat, _ = parseNumberFormatSection("general")
 	} else if len(fmtOptions) == 3 {
-		// If there are three formats, the first is used for positive, the second gets used as a negative format,
-		// the third is for negative, and strings are not formatted.
 		parsedNumFmt.isTimeFormat = fmtOptions[0].isTimeFormat
 		parsedNumFmt.negativeFormatExpectsPositive = true
 		parsedNumFmt.positiveFormat = fmtOptions[0]
@@ -170,17 +162,17 @@ func splitFormat(format string) ([]string, error) {
 func parseNumberFormatSection(fullFormat string) (*formatOptions, error) {
 	reducedFormat := strings.TrimSpace(fullFormat)
 
-	// general is the only format that does not use the normal format symbols notations
 	if compareFormatString(reducedFormat, "general") {
 		return &formatOptions{
 			fullFormatString:    "general",
 			reducedFormatString: "general",
 		}, nil
 	}
+
 	if isTimeFormat(reducedFormat) {
 		return &formatOptions{
-			fullFormatString:    fullFormat,
 			isTimeFormat:        true,
+			fullFormatString:    fullFormat,
 			reducedFormatString: reducedFormat,
 		}, nil
 	}
@@ -197,11 +189,7 @@ func parseNumberFormatSection(fullFormat string) (*formatOptions, error) {
 		return nil, err
 	}
 	if len(remaining) > 0 {
-		// This paradigm of codes consisting of literals, number formats, then more literals is not always correct, they can
-		// actually be intertwined. Though 99% of the time number formats will not do this.
-		// Excel uses this format string for Social Security Numbers: 000\-00\-0000
-		// and this for US phone numbers: [<=9999999]###\-####;\(###\)\ ###\-####
-		return nil, errors.New("invalid or unsupported format string")
+		return nil, ErrInvalidFormat
 	}
 
 	return &formatOptions{
@@ -235,26 +223,18 @@ func isTimeFormat(format string) bool {
 		curReducedFormat := runes[i:]
 		switch curReducedFormat[0] {
 		case '\\', '_':
-			// If there is a slash, skip the next character, and add it to the prefix
-			// If there is an underscore, skip the next character, but don't add it to the prefix
 			if len(curReducedFormat) > 1 {
 				i++
 			}
 		case '*':
-			// Asterisks are used to repeat the next character to fill the full cell width.
-			// There isn't really a cell size in this context, so this will be ignored.
 		case '"':
-			// If there is a quote skip to the next quote, and add the quoted characters to the prefix
 			endQuoteIndex, err := skipToRune(curReducedFormat, '"')
 			if err != nil {
 				return false
 			}
 			i += endQuoteIndex + 1
 		case '$', '-', '+', '/', '(', ')', ':', '!', '^', '&', '\'', '~', '{', '}', '<', '>', '=', ' ':
-			// These symbols are allowed to be used as literal without escaping
 		case ',':
-			// This is not documented in the XLSX spec as far as I can tell, but Excel and Numbers will include
-			// commas in number formats without escaping them, so this should be supported.
 		default:
 			foundInThisLoop := false
 			for _, special := range timeFormatCharacters {
@@ -269,30 +249,16 @@ func isTimeFormat(format string) bool {
 				continue
 			}
 			if curReducedFormat[0] == '[' {
-				// For number formats, this code would happen above in a case '[': section.
-				// However, for time formats it must happen after looking for occurrences in timeFormatCharacters
-				// because there are a few time formats that can be wrapped in brackets.
-
-				// Brackets can be currency annotations (e.g. [$$-409])
-				// color formats (e.g. [color1] through [color56], as well as [red] etc.)
-				// conditionals (e.g. [>100], the valid conditionals are =, >, <, >=, <=, <>)
 				bracketIndex, err := skipToRune(curReducedFormat, ']')
 				if err != nil {
-					// This is not any type of valid format.
 					return false
 				}
 				i += bracketIndex
 				continue
 			}
-			// Symbols that don't have meaning, aren't in the exempt literal characters, and aren't escaped are invalid.
-			// The string could still be a valid number format string.
 			return false
 		}
 	}
-	// If the string doesn't have any time formatting characters, it could technically be a time format, but it
-	// would be a pretty weak time format. A valid time format with no time formatting symbols will also be a number
-	// format with no number formatting symbols, which is essentially a constant string that does not depend on the
-	// cell's value in anyway. The downstream logic will do the right thing in that case if this returns false.
 	return foundTimeFormatCharacters
 }
 
@@ -302,7 +268,7 @@ func skipToRune(runes []rune, r rune) (int, error) {
 			return i, nil
 		}
 	}
-	return -1, fmt.Errorf("no closing quote found")
+	return -1, ErrNoClosingQuote
 }
 
 var timeFormatCharacters = []string{"M", "D", "Y", "YY", "YYYY", "MM", "yyyy", "m", "d", "yy", "h", "m", "AM/PM", "A/P", "am/pm", "a/p", "r", "g", "e", "b1", "b2", "[hh]", "[h]", "[mm]", "[m]",
@@ -315,24 +281,19 @@ func parseLiterals(format string) (string, string, bool, error) {
 		curReducedFormat := format[i:]
 		switch curReducedFormat[0] {
 		case '\\':
-			// If there is a slash, skip the next character, and add it to the prefix
 			if len(curReducedFormat) > 1 {
 				i++
 				prefix += curReducedFormat[1:2]
 			}
 		case '_':
-			// If there is an underscore, skip the next character, but don't add it to the prefix
 			if len(curReducedFormat) > 1 {
 				i++
 			}
 		case '*':
-			// Asterisks are used to repeat the next character to fill the full cell width.
-			// There isn't really a cell size in this context, so this will be ignored.
 		case '"':
-			// If there is a quote skip to the next quote, and add the quoted characters to the prefix
 			endQuoteIndex := strings.Index(curReducedFormat[1:], "\"")
 			if endQuoteIndex == -1 {
-				return "", "", false, errors.New("invalid formatting code, unmatched double quote")
+				return "", "", false, ErrDoubleQuote
 			}
 			prefix = prefix + curReducedFormat[1:endQuoteIndex+1]
 			i += endQuoteIndex + 1
@@ -340,38 +301,28 @@ func parseLiterals(format string) (string, string, bool, error) {
 			showPercent = true
 			prefix += "%"
 		case '[':
-			// Brackets can be currency annotations (e.g. [$$-409])
-			// color formats (e.g. [color1] through [color56], as well as [red] etc.)
-			// conditionals (e.g. [>100], the valid conditionals are =, >, <, >=, <=, <>)
 			bracketIndex := strings.Index(curReducedFormat, "]")
 			if bracketIndex == -1 {
-				return "", "", false, errors.New("invalid formatting code, invalid brackets")
+				return "", "", false, ErrInvalidBrackets
 			}
-			// Currencies in Excel are annotated with this format: [$<Currency String>-<Language Info>]
-			// Currency String is something like $, ¥, €, or £
-			// Language Info is three hexadecimal characters
 			if len(curReducedFormat) > 2 && curReducedFormat[1] == '$' {
 				dashIndex := strings.Index(curReducedFormat, "-")
 				if dashIndex != -1 && dashIndex < bracketIndex {
-					// Get the currency symbol, and skip to the end of the currency format
 					prefix += curReducedFormat[2:dashIndex]
 				} else {
-					return "", "", false, errors.New("invalid formatting code, invalid currency annotation")
+					return "", "", false, ErrInvalidCurrency
 				}
 			}
 			i += bracketIndex
 		case '$', '-', '+', '/', '(', ')', ':', '!', '^', '&', '\'', '~', '{', '}', '<', '>', '=', ' ':
-			// These symbols are allowed to be used as literal without escaping
 			prefix += curReducedFormat[0:1]
 		default:
 			for _, special := range formattingCharacters {
 				if strings.HasPrefix(curReducedFormat, special) {
-					// This means we found the start of the actual number formatting portion, and should return.
 					return prefix, format[i:], showPercent, nil
 				}
 			}
-			// Symbols that don't have meaning and aren't in the exempt literal characters and are not escaped.
-			return "", "", false, errors.New("invalid formatting code: unsupported or unescaped characters")
+			return "", "", false, EUnsupportedCharacters
 		}
 	}
 	return prefix, "", showPercent, nil
@@ -386,7 +337,6 @@ func splitFormatAndSuffixFormat(format string) (string, string) {
 		var found bool
 		for _, special := range formattingCharacters {
 			if strings.HasPrefix(curReducedFormat, special) {
-				// Skip ahead if the special character was longer than length 1
 				i += len(special) - 1
 				found = true
 				break
@@ -475,6 +425,39 @@ func (p *parsedNumFormat) numeric(value string, date1904 bool) (string, error) {
 	return numberFormat.prefix + formattedNum + numberFormat.suffix, nil
 }
 
+var timeReplacements = []struct{ xltime, gotime string }{
+	{"YYYY", "2006"},
+	{"yyyy", "2006"},
+	{"YY", "06"},
+	{"yy", "06"},
+	{"MMMM", "%%%%"},
+	{"mmmm", "%%%%"},
+	{"DDDD", "&&&&"},
+	{"dddd", "&&&&"},
+	{"DD", "02"},
+	{"dd", "02"},
+	{"D", "2"},
+	{"d", "2"},
+	{"MMM", "Jan"},
+	{"mmm", "Jan"},
+	{"MMSS", "0405"},
+	{"mmss", "0405"},
+	{"SS", "05"},
+	{"ss", "05"},
+	{"MM:", "04:"},
+	{"mm:", "04:"},
+	{":MM", ":04"},
+	{":mm", ":04"},
+	{"MM", "01"},
+	{"mm", "01"},
+	{"AM/PM", "pm"},
+	{"am/pm", "pm"},
+	{"M/", "1/"},
+	{"m/", "1/"},
+	{"%%%%", "January"},
+	{"&&&&", "Monday"},
+}
+
 func (p *parsedNumFormat) parseTime(value string, date1904 bool) (string, error) {
 	f, err := strconv.ParseFloat(value, 64)
 	if err != nil {
@@ -482,38 +465,6 @@ func (p *parsedNumFormat) parseTime(value string, date1904 bool) (string, error)
 	}
 	val := timeFromExcelTime(f, date1904)
 	format := p.positiveFormat.fullFormatString
-	replacements := []struct{ xltime, gotime string }{
-		{"YYYY", "2006"},
-		{"yyyy", "2006"},
-		{"YY", "06"},
-		{"yy", "06"},
-		{"MMMM", "%%%%"},
-		{"mmmm", "%%%%"},
-		{"DDDD", "&&&&"},
-		{"dddd", "&&&&"},
-		{"DD", "02"},
-		{"dd", "02"},
-		{"D", "2"},
-		{"d", "2"},
-		{"MMM", "Jan"},
-		{"mmm", "Jan"},
-		{"MMSS", "0405"},
-		{"mmss", "0405"},
-		{"SS", "05"},
-		{"ss", "05"},
-		{"MM:", "04:"},
-		{"mm:", "04:"},
-		{":MM", ":04"},
-		{":mm", ":04"},
-		{"MM", "01"},
-		{"mm", "01"},
-		{"AM/PM", "pm"},
-		{"am/pm", "pm"},
-		{"M/", "1/"},
-		{"m/", "1/"},
-		{"%%%%", "January"},
-		{"&&&&", "Monday"},
-	}
 	if is12HourTime(format) {
 		format = strings.Replace(format, "hh", "03", 1)
 		format = strings.Replace(format, "h", "3", 1)
@@ -521,7 +472,7 @@ func (p *parsedNumFormat) parseTime(value string, date1904 bool) (string, error)
 		format = strings.Replace(format, "hh", "15", 1)
 		format = strings.Replace(format, "h", "15", 1)
 	}
-	for _, repl := range replacements {
+	for _, repl := range timeReplacements {
 		format = strings.Replace(format, repl.xltime, repl.gotime, 1)
 	}
 	if val.Hour() < 1 {
