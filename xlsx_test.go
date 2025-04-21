@@ -31,6 +31,7 @@ func TestOpenSheet(t *testing.T) {
 
 	sheet, err := xlsx.OpenSheetByOrder(0, []bool{true, true, false, true}, 1)
 	require.NoError(t, err)
+	defer sheet.Close()
 
 	isRow := sheet.Next()
 	require.True(t, isRow)
@@ -60,6 +61,7 @@ func TestOpenEmptySheet(t *testing.T) {
 
 	sheet, err := xlsx.OpenSheetByOrder(0, []bool{true, true, false, true}, 1)
 	require.NoError(t, err)
+	defer sheet.Close()
 
 	isRow := sheet.Next()
 	require.False(t, isRow)
@@ -75,6 +77,7 @@ func TestReadSheet(t *testing.T) {
 
 	sheet, err := xlsx.OpenSheetByOrder(0, []bool{true, true, false, true}, 1)
 	require.NoError(t, err)
+	defer sheet.Close()
 
 	sum := 0
 	for sheet.Next() {
@@ -102,5 +105,7 @@ func BenchmarkXlsx1(b *testing.B) {
 		for sheet.Next() {
 			_, _ = sheet.Read()
 		}
+
+		_ = sheet.Close()
 	}
 }

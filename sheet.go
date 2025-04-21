@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"io"
 	"strconv"
-	"strings"
 
 	"github.com/anfilat/xlsx-sax/xml"
 )
@@ -99,14 +98,15 @@ func (s *Sheet) Read() ([]string, error) {
 
 	isV := false
 	isSharedString := false
-	cellName := ""
+	ci := -1
 	for t, err := s.decoder.Token(); err == nil; t, err = s.decoder.Token() {
 		switch token := t.(type) {
 		case xml.StartElement:
 			switch token.Name.Local {
 			case "c":
 				isSharedString = false
-				cellName = ""
+				ci = -1
+				cellName := ""
 				for _, a := range token.Attr {
 					switch a.Name.Local {
 					case "t":
@@ -115,6 +115,11 @@ func (s *Sheet) Read() ([]string, error) {
 						cellName = a.Value
 					}
 				}
+				if cellName == "" {
+					return nil, ErrIncorrectSheet
+				}
+
+				ci = columnIndex(cellName)
 			case "v":
 				isV = true
 			}
@@ -128,12 +133,6 @@ func (s *Sheet) Read() ([]string, error) {
 				break
 			}
 
-			if cellName == "" {
-				return nil, ErrIncorrectSheet
-			}
-
-			columnName := strings.TrimRight(cellName, "0123456789")
-			ci := columnIndex(columnName)
 			if ci >= len(s.cols) || !s.cols[ci] {
 				break
 			}
