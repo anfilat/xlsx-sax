@@ -145,16 +145,15 @@ func (s *Sheet) Read(row []string) error {
 				break
 			}
 
-			val := string(token)
 			if isSharedString {
-				idx, err := strconv.Atoi(val)
+				idx, err := strconv.Atoi(string(token))
 				if err != nil {
 					return err
 				}
-				val = s.sharedStrings[idx]
+				row[s.colMap[ci]] = s.sharedStrings[idx]
+			} else {
+				row[s.colMap[ci]] = string(token)
 			}
-
-			row[s.colMap[ci]] = val
 
 			isV = false
 		}
