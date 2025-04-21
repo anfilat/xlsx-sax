@@ -886,7 +886,13 @@ func (d *Decoder) fillData() {
 	d.dataR = 0
 	d.dataW = n
 	if err != nil {
-		d.err = err
+		if err == io.EOF {
+			if n == 0 {
+				d.err = err
+			}
+		} else {
+			d.err = err
+		}
 	}
 }
 
