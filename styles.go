@@ -45,11 +45,9 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 						}
 					}
 
-					if id == 0 || code == "" {
-						return nil, ErrParseStyles
+					if id > builtinNumFormatsCount {
+						result.numFormats[id] = code
 					}
-
-					result.numFormats[id] = code
 				}
 			case "cellXfs":
 				isCellXfs = true
