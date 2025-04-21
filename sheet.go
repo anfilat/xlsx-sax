@@ -65,7 +65,7 @@ func newSheetReader(zipFile *zip.File, sharedStrings sharedStrings, styles *styl
 func (s *Sheet) skipToSheetData() error {
 	for t, err := s.decoder.Token(); err == nil; t, err = s.decoder.Token() {
 		switch token := t.(type) {
-		case xml.StartElement:
+		case *xml.StartElement:
 			switch token.Name.Local {
 			case "worksheet":
 				//
@@ -102,7 +102,7 @@ func (s *Sheet) NextRow() bool {
 	t, err := s.decoder.Token()
 	for err == nil {
 		switch token := t.(type) {
-		case xml.StartElement:
+		case *xml.StartElement:
 			if token.Name.Local == "row" {
 				for _, a := range token.Attr {
 					if a.Name.Local == "r" {
@@ -118,7 +118,7 @@ func (s *Sheet) NextRow() bool {
 				}
 				return true
 			}
-		case xml.EndElement:
+		case *xml.EndElement:
 			if token.Name.Local == "sheetData" {
 				s.err = io.EOF
 				return false
@@ -143,7 +143,7 @@ func (s *Sheet) NextCell() bool {
 	t, err := s.decoder.Token()
 	for err == nil {
 		switch token := t.(type) {
-		case xml.StartElement:
+		case *xml.StartElement:
 			switch token.Name.Local {
 			case "c":
 				cell := ""
@@ -190,7 +190,7 @@ func (s *Sheet) NextCell() bool {
 			case "t":
 				isT = true
 			}
-		case xml.EndElement:
+		case *xml.EndElement:
 			switch token.Name.Local {
 			case "c":
 				return true

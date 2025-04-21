@@ -25,7 +25,7 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 	isCellXfs := false
 	for t, err := decoder.Token(); err == nil; t, err = decoder.Token() {
 		switch token := t.(type) {
-		case xml.StartElement:
+		case *xml.StartElement:
 			switch token.Name.Local {
 			case "numFmts":
 				isNumFmts = true
@@ -70,7 +70,7 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 			default:
 				_ = decoder.Skip()
 			}
-		case xml.EndElement:
+		case *xml.EndElement:
 			switch token.Name.Local {
 			case "numFmts":
 				isNumFmts = false

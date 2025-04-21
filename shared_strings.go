@@ -26,7 +26,7 @@ func readSharedStrings(reader io.Reader) (sharedStrings, error) {
 	str := ""
 	for t, err := decoder.Token(); err == nil; t, err = decoder.Token() {
 		switch token := t.(type) {
-		case xml.StartElement:
+		case *xml.StartElement:
 			switch token.Name.Local {
 			case "si":
 				str = ""
@@ -59,7 +59,7 @@ func readSharedStrings(reader io.Reader) (sharedStrings, error) {
 			default:
 				_ = decoder.Skip()
 			}
-		case xml.EndElement:
+		case *xml.EndElement:
 			switch token.Name.Local {
 			case "si":
 				result = append(result, str)

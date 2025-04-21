@@ -298,7 +298,7 @@ func (d *Decoder) Token() (Token, error) {
 		}
 	}
 	switch t1 := t.(type) {
-	case StartElement:
+	case *StartElement:
 		// In XML name spaces, the translations listed in the
 		// attributes apply to the element name and
 		// to the other attribute names, so process
@@ -324,8 +324,8 @@ func (d *Decoder) Token() (Token, error) {
 		}
 		t = t1
 
-	case EndElement:
-		if !d.popElement(&t1) {
+	case *EndElement:
+		if !d.popElement(t1) {
 			return nil, d.err
 		}
 		t = t1
@@ -346,9 +346,9 @@ func (d *Decoder) Skip() error {
 			return err
 		}
 		switch tok.(type) {
-		case StartElement:
+		case *StartElement:
 			depth++
-		case EndElement:
+		case *EndElement:
 			if depth == 0 {
 				return nil
 			}
@@ -550,9 +550,9 @@ func (d *Decoder) autoClose(t Token) (Token, bool) {
 	for _, s := range d.AutoClose {
 		if strings.EqualFold(s, d.stk.name.Local) {
 			// This one should be auto closed if t doesn't close it.
-			et, ok := t.(EndElement)
+			et, ok := t.(*EndElement)
 			if !ok || !strings.EqualFold(et.Name.Local, d.stk.name.Local) {
-				return EndElement{d.stk.name}, true
+				return &EndElement{d.stk.name}, true
 			}
 			break
 		}
@@ -584,7 +584,7 @@ func (d *Decoder) rawToken() (Token, error) {
 		// we returned just the StartElement half.
 		// Return the EndElement half now.
 		d.needClose = false
-		return EndElement{d.toClose}, nil
+		return &EndElement{d.toClose}, nil
 	}
 
 	b, ok := d.getc()
@@ -623,7 +623,7 @@ func (d *Decoder) rawToken() (Token, error) {
 			d.err = d.syntaxError("invalid characters between </" + name.Local + " and >")
 			return nil, d.err
 		}
-		return EndElement{name}, nil
+		return &EndElement{name}, nil
 
 	case '?':
 		// <?: Processing instruction.
@@ -871,7 +871,7 @@ func (d *Decoder) rawToken() (Token, error) {
 		d.needClose = true
 		d.toClose = name
 	}
-	return StartElement{name, attr}, nil
+	return &StartElement{name, attr}, nil
 }
 
 func (d *Decoder) attrval() []byte {
