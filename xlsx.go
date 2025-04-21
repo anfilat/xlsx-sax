@@ -9,6 +9,7 @@ import (
 type Xlsx struct {
 	zip           *zip.Reader
 	sheetFile     []*zip.File
+	sheetNames    []string
 	sheetNameFile map[string]*zip.File
 	sharedStrings []string
 }
@@ -106,6 +107,7 @@ func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files m
 	}
 
 	x.sheetFile = make([]*zip.File, 0, len(wb.Sheets))
+	x.sheetNames = make([]string, 0, len(wb.Sheets))
 	x.sheetNameFile = make(map[string]*zip.File, len(wb.Sheets))
 	for _, sheet := range wb.Sheets {
 		path, ok := sheets[sheet.ID]
@@ -119,6 +121,7 @@ func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files m
 		}
 
 		x.sheetFile = append(x.sheetFile, file)
+		x.sheetNames = append(x.sheetNames, sheet.Name)
 		x.sheetNameFile[sheet.Name] = file
 	}
 
@@ -141,6 +144,12 @@ func (x *Xlsx) fillSharedStrings(zipFile *zip.File) error {
 
 type SheetParams struct {
 	Skip int
+}
+
+func (x *Xlsx) SheetNames() []string {
+	result := make([]string, len(x.sheetNames))
+	copy(result, x.sheetNames)
+	return result
 }
 
 func (x *Xlsx) OpenSheetByName(name string, cols []int, params SheetParams) (*Sheet, error) {

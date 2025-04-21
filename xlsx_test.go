@@ -21,6 +21,20 @@ func TestNew(t *testing.T) {
 	require.Len(t, xlsx.sharedStrings, 9)
 }
 
+func TestSheetNames(t *testing.T) {
+	data, err := os.ReadFile("testdata/test1.xlsx")
+	require.NoError(t, err)
+
+	br := bytes.NewReader(data)
+	xlsx, err := New(br, br.Size())
+	require.NoError(t, err)
+
+	names := xlsx.SheetNames()
+	require.Len(t, names, 2)
+	require.Equal(t, "Sheet1", names[0])
+	require.Equal(t, "Sheet2", names[1])
+}
+
 func TestOpenSheet(t *testing.T) {
 	data, err := os.ReadFile("testdata/test1.xlsx")
 	require.NoError(t, err)
