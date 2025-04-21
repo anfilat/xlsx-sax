@@ -84,9 +84,12 @@ func (s *Sheet) Next() bool {
 	for t, err := s.decoder.Token(); err == nil; t, err = s.decoder.Token() {
 		switch token := t.(type) {
 		case xml.StartElement:
-			switch token.Name.Local {
-			case "row":
+			if token.Name.Local == "row" {
 				return true
+			}
+		case xml.EndElement:
+			if token.Name.Local == "sheetData" {
+				return false
 			}
 		}
 	}
