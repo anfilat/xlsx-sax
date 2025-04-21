@@ -10,4 +10,6 @@ var (
 	ErrIncorrectSheet        = errors.New("incorrect sheet")
 	ErrIncorrectSharedString = errors.New("incorrect shared string")
 	ErrParseStyles           = errors.New("parse styles")
+	ErrDoubleQuote           = errors.New("invalid format string, unmatched double quote")
+	ErrManySections          = errors.New("invalid number format, too many format sections")
 )

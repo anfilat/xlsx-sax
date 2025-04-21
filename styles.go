@@ -7,6 +7,11 @@ import (
 	"github.com/anfilat/xlsx-sax/internal/xml"
 )
 
+type styleSheet struct {
+	numFormats map[int]string
+	cellXfs    []int
+}
+
 func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 	decoder := xml.NewDecoder(reader)
 
@@ -76,9 +81,4 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 	}
 
 	return &result, nil
-}
-
-type styleSheet struct {
-	numFormats map[int]string
-	cellXfs    []int
 }
