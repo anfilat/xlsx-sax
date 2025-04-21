@@ -850,12 +850,12 @@ func (d *Decoder) fillData() {
 	}
 }
 
-var entity = map[string]rune{
-	"lt":   '<',
-	"gt":   '>',
-	"amp":  '&',
-	"apos": '\'',
-	"quot": '"',
+var entity = map[string]string{
+	"lt":   "<",
+	"gt":   ">",
+	"amp":  "&",
+	"apos": "'",
+	"quot": "\"",
 }
 
 // Read plain text section (XML calls it character data).
@@ -968,7 +968,7 @@ Input:
 					if isName(name) {
 						s := string(name)
 						if r, ok := entity[s]; ok {
-							text = string(r)
+							text = r
 							haveText = true
 						} else if d.Entity != nil {
 							text, haveText = d.Entity[s]
