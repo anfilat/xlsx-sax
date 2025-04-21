@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
+	"strings"
 )
 
 type Xlsx struct {
@@ -45,7 +46,7 @@ func (x *Xlsx) load() error {
 		return ErrWorkbookRelsNotExist
 	}
 
-	sheets, sharedStringPath, stylesPath, err := x.getWorkbookRels(workbookRelsFile)
+	sheets, err := x.getWorkbookRels(workbookRelsFile)
 	if err != nil {
 		return err
 	}
@@ -60,16 +61,16 @@ func (x *Xlsx) load() error {
 		return err
 	}
 
-	sharedStringFile, ok := files[sharedStringPath]
-	if ok {
+	sharedStringFile := x.findFile(files, "sharedStrings.xml")
+	if sharedStringFile != nil {
 		err = x.fillSharedStrings(sharedStringFile)
 		if err != nil {
 			return err
 		}
 	}
 
-	stylesFile, ok := files[stylesPath]
-	if ok {
+	stylesFile := x.findFile(files, "styles.xml")
+	if stylesFile != nil {
 		err = x.fillStyles(stylesFile)
 		if err != nil {
 			return err
@@ -79,33 +80,36 @@ func (x *Xlsx) load() error {
 	return nil
 }
 
-func (x *Xlsx) getWorkbookRels(zipFile *zip.File) (map[string]string, string, string, error) {
+func (x *Xlsx) findFile(files map[string]*zip.File, name string) *zip.File {
+	for _, file := range files {
+		if strings.HasSuffix(file.Name, name) {
+			return file
+		}
+	}
+	return nil
+}
+
+func (x *Xlsx) getWorkbookRels(zipFile *zip.File) (map[string]string, error) {
 	reader, err := zipFile.Open()
 	if err != nil {
-		return nil, "", "", err
+		return nil, err
 	}
 	defer reader.Close()
 
 	rels, err := readWorkbookRels(reader)
 	if err != nil {
-		return nil, "", "", err
+		return nil, err
 	}
 
 	sheets := make(map[string]string, len(rels.Relationship))
-	var sharedStrs string
-	var styles string
 	for _, rel := range rels.Relationship {
 		switch rel.Type {
 		case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet":
 			sheets[rel.ID] = "xl/" + rel.Target
-		case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings":
-			sharedStrs = "xl/" + rel.Target
-		case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles":
-			styles = "xl/" + rel.Target
 		}
 	}
 
-	return sheets, sharedStrs, styles, nil
+	return sheets, nil
 }
 
 func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files map[string]*zip.File) error {
