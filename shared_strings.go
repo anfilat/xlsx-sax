@@ -68,12 +68,12 @@ func readSharedStrings(reader io.Reader) (sharedStrings, error) {
 			case "r":
 				isR = false
 			}
-		case xml.CharData:
+		case *xml.CharData:
 			if isT {
 				if isR {
-					str += ar.toString(token)
+					str += ar.toString(token.Value)
 				} else {
-					str = ar.toString(token)
+					str = ar.toString(token.Value)
 				}
 			}
 		}

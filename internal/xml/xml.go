@@ -78,10 +78,14 @@ type EndElement struct {
 // A CharData represents XML character data (raw text),
 // in which XML escape sequences have been replaced by
 // the characters they represent.
-type CharData []byte
+type CharData struct {
+	Value []byte
+}
 
 // Copy creates a new copy of CharData.
-func (c CharData) Copy() CharData { return CharData(bytes.Clone(c)) }
+func (c CharData) Copy() CharData {
+	return CharData{Value: bytes.Clone(c.Value)}
+}
 
 // A Comment represents an XML comment of the form <!--comment-->.
 // The bytes do not include the <!-- and --> comment markers.
@@ -108,23 +112,6 @@ type Directive []byte
 
 // Copy creates a new copy of Directive.
 func (d Directive) Copy() Directive { return Directive(bytes.Clone(d)) }
-
-// CopyToken returns a copy of a Token.
-func CopyToken(t Token) Token {
-	switch v := t.(type) {
-	case CharData:
-		return v.Copy()
-	case Comment:
-		return v.Copy()
-	case Directive:
-		return v.Copy()
-	case ProcInst:
-		return v.Copy()
-	case StartElement:
-		return v.Copy()
-	}
-	return t
-}
 
 // A TokenReader is anything that can decode a stream of XML tokens, including a
 // [Decoder].
@@ -213,6 +200,9 @@ type Decoder struct {
 	linestart      int64
 	offset         int64
 	unmarshalDepth int
+	startElement   *StartElement
+	endElement     *EndElement
+	charData       *CharData
 }
 
 // NewDecoder creates a new XML parser reading from r.
@@ -220,28 +210,15 @@ type Decoder struct {
 // do its own buffering.
 func NewDecoder(r io.Reader) *Decoder {
 	d := &Decoder{
-		ns:       make(map[string]string),
-		nextByte: -1,
-		line:     1,
-		Strict:   true,
+		ns:           make(map[string]string),
+		nextByte:     -1,
+		line:         1,
+		Strict:       true,
+		startElement: &StartElement{},
+		endElement:   &EndElement{},
+		charData:     &CharData{},
 	}
 	d.switchToReader(r)
-	return d
-}
-
-// NewTokenDecoder creates a new XML parser using an underlying token stream.
-func NewTokenDecoder(t TokenReader) *Decoder {
-	// Is it already a Decoder?
-	if d, ok := t.(*Decoder); ok {
-		return d
-	}
-	d := &Decoder{
-		ns:       make(map[string]string),
-		t:        t,
-		nextByte: -1,
-		line:     1,
-		Strict:   true,
-	}
 	return d
 }
 
@@ -584,7 +561,8 @@ func (d *Decoder) rawToken() (Token, error) {
 		// we returned just the StartElement half.
 		// Return the EndElement half now.
 		d.needClose = false
-		return &EndElement{d.toClose}, nil
+		d.endElement.Name = d.toClose
+		return d.endElement, nil
 	}
 
 	b, ok := d.getc()
@@ -599,7 +577,8 @@ func (d *Decoder) rawToken() (Token, error) {
 		if data == nil {
 			return nil, d.err
 		}
-		return CharData(data), nil
+		d.charData.Value = data
+		return d.charData, nil
 	}
 
 	if b, ok = d.mustgetc(); !ok {
@@ -623,7 +602,8 @@ func (d *Decoder) rawToken() (Token, error) {
 			d.err = d.syntaxError("invalid characters between </" + name.Local + " and >")
 			return nil, d.err
 		}
-		return &EndElement{name}, nil
+		d.endElement.Name = name
+		return d.endElement, nil
 
 	case '?':
 		// <?: Processing instruction.
@@ -729,7 +709,8 @@ func (d *Decoder) rawToken() (Token, error) {
 			if data == nil {
 				return nil, d.err
 			}
-			return CharData(data), nil
+			d.charData.Value = data
+			return d.charData, nil
 		}
 
 		// Probably a directive: <!DOCTYPE ...>, <!ENTITY ...>, etc.
@@ -808,7 +789,6 @@ func (d *Decoder) rawToken() (Token, error) {
 	var (
 		name  Name
 		empty bool
-		attr  []Attr
 	)
 	if name, ok = d.nsname(); !ok {
 		if d.err == nil {
@@ -817,7 +797,8 @@ func (d *Decoder) rawToken() (Token, error) {
 		return nil, d.err
 	}
 
-	attr = []Attr{}
+	d.startElement.Name = name
+	d.startElement.Attr = d.startElement.Attr[:0]
 	for {
 		d.space()
 		if b, ok = d.mustgetc(); !ok {
@@ -865,13 +846,13 @@ func (d *Decoder) rawToken() (Token, error) {
 			}
 			a.Value = string(data)
 		}
-		attr = append(attr, a)
+		d.startElement.Attr = append(d.startElement.Attr, a)
 	}
 	if empty {
 		d.needClose = true
 		d.toClose = name
 	}
-	return &StartElement{name, attr}, nil
+	return d.startElement, nil
 }
 
 func (d *Decoder) attrval() []byte {

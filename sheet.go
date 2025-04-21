@@ -203,12 +203,12 @@ func (s *Sheet) NextCell() bool {
 			case "t":
 				isT = false
 			}
-		case xml.CharData:
+		case *xml.CharData:
 			if !(isV || (isIs && isT)) {
 				break
 			}
 
-			s.cellValue = append(s.cellValue, token...)
+			s.cellValue = append(s.cellValue, token.Value...)
 		}
 
 		t, err = s.decoder.Token()
