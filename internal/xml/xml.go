@@ -42,7 +42,18 @@ type Name struct {
 // An Attr represents an attribute in an XML element (Name=Value).
 type Attr struct {
 	Name  Name
-	Value string
+	Value bytes.Buffer
+}
+
+// A TagAttrs represents a list of useful attributes in an XML element
+type TagAttrs struct {
+	Name string
+	Attr []TagAttr
+}
+
+type TagAttr struct {
+	Name string
+	buf  bytes.Buffer
 }
 
 // A Token is an interface holding one of the token types:
@@ -168,12 +179,13 @@ type Decoder struct {
 	endElement     *EndElement
 	charData       *CharData
 	names          [utf8.RuneSelf][]string
+	tagAttrs       []TagAttrs
 }
 
 // NewDecoder creates a new XML parser reading from r.
 // If r does not implement [io.ByteReader], NewDecoder will
 // do its own buffering.
-func NewDecoder(r io.Reader) *Decoder {
+func NewDecoder(r io.Reader, tagAttrs []TagAttrs) *Decoder {
 	d := &Decoder{
 		ns:           make(map[string]string),
 		Strict:       true,
@@ -184,6 +196,7 @@ func NewDecoder(r io.Reader) *Decoder {
 		data:         make([]byte, 4096),
 		dataR:        0,
 		dataW:        0,
+		tagAttrs:     tagAttrs,
 	}
 	return d
 }
@@ -247,13 +260,13 @@ func (d *Decoder) Token() (Token, error) {
 			if a.Name.Space == xmlnsPrefix {
 				v, ok := d.ns[a.Name.Local]
 				d.pushNs(a.Name.Local, v, ok)
-				d.ns[a.Name.Local] = a.Value
+				d.ns[a.Name.Local] = a.Value.String()
 			}
 			if a.Name.Space == "" && a.Name.Local == xmlnsPrefix {
 				// Default space for untagged names
 				v, ok := d.ns[""]
 				d.pushNs("", v, ok)
-				d.ns[""] = a.Value
+				d.ns[""] = a.Value.String()
 			}
 		}
 
@@ -760,8 +773,8 @@ func (d *Decoder) rawToken() (Token, error) {
 		}
 		d.ungetc()
 
-		a := Attr{}
-		if a.Name, ok = d.nsname(); !ok {
+		var attrName Name
+		if attrName, ok = d.nsname(); !ok {
 			if d.err == nil {
 				d.err = d.syntaxError("expected attribute name in element")
 			}
@@ -772,21 +785,35 @@ func (d *Decoder) rawToken() (Token, error) {
 			return nil, d.err
 		}
 		if b != '=' {
-			if d.Strict {
-				d.err = d.syntaxError("attribute name without = in element")
-				return nil, d.err
-			}
-			d.ungetc()
-			a.Value = a.Name.Local
-		} else {
-			d.space()
-			data := d.attrval()
-			if data == nil {
-				return nil, d.err
-			}
-			a.Value = string(data)
+			d.err = d.syntaxError("attribute name without = in element")
+			return nil, d.err
 		}
-		d.startElement.Attr = append(d.startElement.Attr, a)
+		d.space()
+		attrValue := d.attrval()
+		if attrValue == nil {
+			return nil, d.err
+		}
+
+		var attrs []TagAttr
+		for i := 0; i < len(d.tagAttrs); i++ {
+			if d.tagAttrs[i].Name == name.Local {
+				attrs = d.tagAttrs[i].Attr
+			}
+		}
+		if len(attrs) == 0 {
+			continue
+		}
+		for i := 0; i < len(attrs); i++ {
+			if attrs[i].Name == attrName.Local {
+				attrs[i].buf.Reset()
+				attrs[i].buf.Write(attrValue)
+				d.startElement.Attr = append(d.startElement.Attr, Attr{
+					Name:  attrName,
+					Value: attrs[i].buf,
+				})
+				break
+			}
+		}
 	}
 	if empty {
 		d.needClose = true

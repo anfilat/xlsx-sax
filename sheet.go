@@ -43,7 +43,22 @@ func newSheetReader(zipFile *zip.File, sharedStrings sharedStrings, styles *styl
 		return nil, err
 	}
 
-	decoder := xml.NewDecoder(reader)
+	decoder := xml.NewDecoder(reader, []xml.TagAttrs{
+		{
+			Name: "row",
+			Attr: []xml.TagAttr{
+				{Name: "r"},
+			},
+		},
+		{
+			Name: "c",
+			Attr: []xml.TagAttr{
+				{Name: "t"},
+				{Name: "s"},
+				{Name: "r"},
+			},
+		},
+	})
 	sheet := &Sheet{
 		zipReader:     reader,
 		decoder:       decoder,
@@ -106,7 +121,7 @@ func (s *Sheet) NextRow() bool {
 			if token.Name.Local == "row" {
 				for _, a := range token.Attr {
 					if a.Name.Local == "r" {
-						row, er := strconv.Atoi(a.Value)
+						row, er := strconv.Atoi(string(a.Value.Bytes()))
 						if er != nil {
 							s.err = er
 							return false
@@ -146,11 +161,11 @@ func (s *Sheet) NextCell() bool {
 		case *xml.StartElement:
 			switch token.Name.Local {
 			case "c":
-				cell := ""
+				var cell []byte
 				for _, a := range token.Attr {
 					switch a.Name.Local {
 					case "t":
-						switch a.Value {
+						switch string(a.Value.Bytes()) {
 						case "s":
 							s.cellType = cellTypeString
 						case "inlineStr":
@@ -167,16 +182,16 @@ func (s *Sheet) NextCell() bool {
 							s.cellType = cellTypeNumeric
 						}
 					case "s":
-						s.cellFormat, err = strconv.Atoi(a.Value)
+						s.cellFormat, err = strconv.Atoi(string(a.Value.Bytes()))
 						if err != nil {
 							s.err = ErrIncorrectSheet
 							return false
 						}
 					case "r":
-						cell = a.Value
+						cell = a.Value.Bytes()
 					}
 				}
-				if cell == "" {
+				if len(cell) == 0 {
 					s.err = ErrIncorrectSheet
 					return false
 				}

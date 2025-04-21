@@ -14,7 +14,21 @@ type styleSheet struct {
 }
 
 func readStyleSheet(reader io.Reader) (*styleSheet, error) {
-	decoder := xml.NewDecoder(reader)
+	decoder := xml.NewDecoder(reader, []xml.TagAttrs{
+		{
+			Name: "numFmt",
+			Attr: []xml.TagAttr{
+				{Name: "formatCode"},
+				{Name: "numFmtId"},
+			},
+		},
+		{
+			Name: "xf",
+			Attr: []xml.TagAttr{
+				{Name: "numFmtId"},
+			},
+		},
+	})
 
 	result := styleSheet{
 		numFormats:    make(map[int]string),
@@ -36,9 +50,9 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 					for _, attr := range token.Attr {
 						switch attr.Name.Local {
 						case "formatCode":
-							code = attr.Value
+							code = attr.Value.String()
 						case "numFmtId":
-							id, err = strconv.Atoi(attr.Value)
+							id, err = strconv.Atoi(string(attr.Value.Bytes()))
 							if err != nil {
 								return nil, err
 							}
@@ -57,7 +71,7 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 					for _, attr := range token.Attr {
 						switch attr.Name.Local {
 						case "numFmtId":
-							id, err = strconv.Atoi(attr.Value)
+							id, err = strconv.Atoi(string(attr.Value.Bytes()))
 							if err != nil {
 								return nil, err
 							}

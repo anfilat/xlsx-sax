@@ -17,7 +17,15 @@ func (s sharedStrings) get(idx int) (string, error) {
 }
 
 func readSharedStrings(reader io.Reader) (sharedStrings, error) {
-	decoder := xml.NewDecoder(reader)
+	decoder := xml.NewDecoder(reader, []xml.TagAttrs{
+		{
+			Name: "sst",
+			Attr: []xml.TagAttr{
+				{Name: "uniqueCount"},
+				{Name: "count"},
+			},
+		},
+	})
 
 	var result sharedStrings
 	ar := &arena{}
@@ -40,12 +48,12 @@ func readSharedStrings(reader io.Reader) (sharedStrings, error) {
 				for _, attr := range token.Attr {
 					switch attr.Name.Local {
 					case "uniqueCount":
-						uniqCount, err = strconv.Atoi(attr.Value)
+						uniqCount, err = strconv.Atoi(string(attr.Value.Bytes()))
 						if err != nil {
 							return nil, err
 						}
 					case "count":
-						count, err = strconv.Atoi(attr.Value)
+						count, err = strconv.Atoi(string(attr.Value.Bytes()))
 						if err != nil {
 							return nil, err
 						}
