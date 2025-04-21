@@ -146,13 +146,6 @@ type Decoder struct {
 	//	"quot": `"`,
 	Entity map[string]string
 
-	// CharsetReader, if non-nil, defines a function to generate
-	// charset-conversion readers, converting from the provided
-	// non-UTF-8 charset into UTF-8. If CharsetReader is nil or
-	// returns an error, parsing stops with an error. One of the
-	// CharsetReader's result values must be non-nil.
-	CharsetReader func(charset string, input io.Reader) (io.Reader, error)
-
 	// DefaultSpace sets the default name space used for unadorned tags,
 	// as if the entire XML stream were wrapped in an element containing
 	// the attribute xmlns="DefaultSpace".
@@ -208,9 +201,6 @@ func NewDecoder(r io.Reader) *Decoder {
 // if Token encounters an unexpected end element
 // or EOF before all expected end elements,
 // it will return an error.
-//
-// If [Decoder.CharsetReader] is called and returns an error,
-// the error is wrapped and returned.
 //
 // Token implements XML name spaces as described by
 // https://www.w3.org/TR/REC-xml-names/. Each of the
@@ -609,19 +599,8 @@ func (d *Decoder) rawToken() (Token, error) {
 			}
 			enc := procInst("encoding", content)
 			if enc != "" && enc != "utf-8" && enc != "UTF-8" && !strings.EqualFold(enc, "utf-8") {
-				if d.CharsetReader == nil {
-					d.err = fmt.Errorf("xml: encoding %q declared but Decoder.CharsetReader is nil", enc)
-					return nil, d.err
-				}
-				newr, err := d.CharsetReader(enc, d.r.(io.Reader))
-				if err != nil {
-					d.err = fmt.Errorf("xml: opening charset %q: %w", enc, err)
-					return nil, d.err
-				}
-				if newr == nil {
-					panic("CharsetReader returned a nil Reader for charset " + enc)
-				}
-				d.switchToReader(newr)
+				d.err = fmt.Errorf("xml: encoding %q declared", enc)
+				return nil, d.err
 			}
 		}
 		return ProcInst{target, data}, nil
