@@ -1086,24 +1086,8 @@ Input:
 
 		b0, b1 = b1, b
 	}
-	data := d.buf.Bytes()
 
-	// Inspect each rune for being a disallowed character.
-	buf := data
-	for len(buf) > 0 {
-		r, size := utf8.DecodeRune(buf)
-		if r == utf8.RuneError && size == 1 {
-			d.err = d.syntaxError("invalid UTF-8")
-			return nil
-		}
-		buf = buf[size:]
-		if !isInCharacterRange(r) {
-			d.err = d.syntaxError(fmt.Sprintf("illegal character code %U", r))
-			return nil
-		}
-	}
-
-	return data
+	return d.checkChars(d.buf.Bytes())
 }
 
 func (d *Decoder) textCData() []byte {
@@ -1136,9 +1120,12 @@ func (d *Decoder) textCData() []byte {
 		b0, b1 = b1, b
 	}
 	data := d.buf.Bytes()
-	data = data[:len(data)-2]
 
-	// Inspect each rune for being a disallowed character.
+	return d.checkChars(data[:len(data)-2])
+}
+
+// Inspect each rune for being a disallowed character.
+func (d *Decoder) checkChars(data []byte) []byte {
 	buf := data
 	for len(buf) > 0 {
 		r, size := utf8.DecodeRune(buf)
