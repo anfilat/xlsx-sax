@@ -103,6 +103,7 @@ func (s *Sheet) NextRow() bool {
 			}
 		case xml.EndElement:
 			if token.Name.Local == "sheetData" {
+				s.err = io.EOF
 				return false
 			}
 		}

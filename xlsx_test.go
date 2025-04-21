@@ -127,6 +127,31 @@ func TestOpenEmptySheet(t *testing.T) {
 
 	isRow := sheet.NextRow()
 	require.False(t, isRow)
+
+	err = sheet.Err()
+	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestOpenRichText(t *testing.T) {
+	data, err := os.ReadFile("testdata/test1.xlsx")
+	require.NoError(t, err)
+
+	br := bytes.NewReader(data)
+	xlsx, err := New(br, br.Size())
+	require.NoError(t, err)
+
+	sheet, err := xlsx.OpenSheetByOrder(1)
+	require.NoError(t, err)
+	defer sheet.Close()
+
+	isRow := sheet.NextRow()
+	require.True(t, isRow)
+
+	isCell := sheet.NextCell()
+	require.True(t, isCell)
+	val, err := sheet.CellValue()
+	require.NoError(t, err)
+	require.Equal(t, "This is text, rich text", val)
 }
 
 func TestReadSheet(t *testing.T) {
@@ -158,7 +183,7 @@ func TestReadSheet(t *testing.T) {
 		}
 	}
 	err = sheet.Err()
-	require.ErrorIs(t, sheet.Err(), io.EOF)
+	require.ErrorIs(t, err, io.EOF)
 	require.Equal(t, 5, sum)
 }
 
