@@ -767,24 +767,6 @@ func (d *Decoder) space() {
 	}
 }
 
-// Read a single byte.
-// If there is no byte to read, return ok==false
-// and leave the error in d.err.
-// Maintain line number.
-func (d *Decoder) getc() (b byte, ok bool) {
-	if d.err == nil && d.dataR == d.dataW {
-		d.fillData()
-	}
-
-	if d.err != nil {
-		return 0, false
-	}
-
-	b = d.data[d.dataR]
-	d.dataR++
-	return b, true
-}
-
 // Must read a single byte.
 // If there is no byte to read,
 // set d.err to SyntaxError("unexpected EOF")
@@ -796,6 +778,27 @@ func (d *Decoder) mustgetc() (b byte, ok bool) {
 		}
 	}
 	return
+}
+
+// Read a single byte.
+// If there is no byte to read, return ok==false
+// and leave the error in d.err.
+// Maintain line number.
+func (d *Decoder) getc() (b byte, ok bool) {
+	if d.err != nil {
+		return 0, false
+	}
+
+	if d.dataR == d.dataW {
+		d.fillData()
+		if d.err != nil {
+			return 0, false
+		}
+	}
+
+	b = d.data[d.dataR]
+	d.dataR++
+	return b, true
 }
 
 // Unread a single byte.
