@@ -17,7 +17,8 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 	decoder := xml.NewDecoder(reader)
 
 	result := styleSheet{
-		numFormats: make(map[int]string),
+		numFormats:    make(map[int]string),
+		parsedFormats: make(map[string]*parsedNumFormat),
 	}
 
 	isNumFmts := false

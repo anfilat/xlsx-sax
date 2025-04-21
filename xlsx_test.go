@@ -2,7 +2,6 @@ package xlsx
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -198,14 +197,24 @@ func BenchmarkXlsx1(b *testing.B) {
 		sheet, _ := xlsx.OpenSheetByOrder(0)
 
 		for sheet.NextRow() {
+			item := xlsx1Item{}
 			for sheet.NextCell() {
-				val, _ := sheet.CellValue()
-				if len(val) > 100000 {
-					fmt.Println(val)
+				if sheet.Col == 0 {
+					item.Name, _ = sheet.CellValue()
+				} else if sheet.Col == 1 {
+					item.Offer, _ = sheet.CellFormatValue()
+				} else if sheet.Col == 3 {
+					item.Count, _ = sheet.CellInt()
 				}
 			}
 		}
 
 		_ = sheet.Close()
 	}
+}
+
+type xlsx1Item struct {
+	Name  string
+	Offer string
+	Count int
 }
