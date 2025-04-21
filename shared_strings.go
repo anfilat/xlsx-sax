@@ -33,9 +33,9 @@ func readSharedStrings(reader io.Reader) (sharedStrings, error) {
 	isR := false
 	str := ""
 	for t, err := decoder.Token(); err == nil; t, err = decoder.Token() {
-		switch token := t.(type) {
-		case *xml.StartElement:
-			switch token.Name.Local {
+		switch t.Type {
+		case xml.StartElement:
+			switch t.Name.Local {
 			case "si":
 				str = ""
 			case "t":
@@ -45,7 +45,7 @@ func readSharedStrings(reader io.Reader) (sharedStrings, error) {
 			case "sst":
 				uniqCount := 0
 				count := 0
-				for _, attr := range token.Attr {
+				for _, attr := range t.Attr {
 					switch attr.Name.Local {
 					case "uniqueCount":
 						uniqCount, err = strconv.Atoi(string(attr.Value.Bytes()))
@@ -67,8 +67,8 @@ func readSharedStrings(reader io.Reader) (sharedStrings, error) {
 			default:
 				_ = decoder.Skip()
 			}
-		case *xml.EndElement:
-			switch token.Name.Local {
+		case xml.EndElement:
+			switch t.Name.Local {
 			case "si":
 				result = append(result, str)
 			case "t":
@@ -76,12 +76,12 @@ func readSharedStrings(reader io.Reader) (sharedStrings, error) {
 			case "r":
 				isR = false
 			}
-		case *xml.CharData:
+		case xml.CharData:
 			if isT {
 				if isR {
-					str += ar.toString(token.Value)
+					str += ar.toString(t.Value)
 				} else {
-					str = ar.toString(token.Value)
+					str = ar.toString(t.Value)
 				}
 			}
 		}

@@ -38,16 +38,16 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 	isNumFmts := false
 	isCellXfs := false
 	for t, err := decoder.Token(); err == nil; t, err = decoder.Token() {
-		switch token := t.(type) {
-		case *xml.StartElement:
-			switch token.Name.Local {
+		switch t.Type {
+		case xml.StartElement:
+			switch t.Name.Local {
 			case "numFmts":
 				isNumFmts = true
 			case "numFmt":
 				if isNumFmts {
 					id := 0
 					code := ""
-					for _, attr := range token.Attr {
+					for _, attr := range t.Attr {
 						switch attr.Name.Local {
 						case "formatCode":
 							code = attr.Value.String()
@@ -68,7 +68,7 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 			case "xf":
 				if isCellXfs {
 					id := 0
-					for _, attr := range token.Attr {
+					for _, attr := range t.Attr {
 						switch attr.Name.Local {
 						case "numFmtId":
 							id, err = strconv.Atoi(string(attr.Value.Bytes()))
@@ -84,8 +84,8 @@ func readStyleSheet(reader io.Reader) (*styleSheet, error) {
 			default:
 				_ = decoder.Skip()
 			}
-		case *xml.EndElement:
-			switch token.Name.Local {
+		case xml.EndElement:
+			switch t.Name.Local {
 			case "numFmts":
 				isNumFmts = false
 			case "cellXfs":

@@ -56,46 +56,35 @@ type TagAttr struct {
 	buf  bytes.Buffer
 }
 
-// A Token is an interface holding one of the token types:
-// [StartElement], [EndElement], [CharData], [Comment], [ProcInst], or [Directive].
-type Token any
+type TokenType int
 
-// A StartElement represents an XML start element.
-type StartElement struct {
-	Name Name
-	Attr []Attr
-}
+const (
+	StartElement TokenType = iota
+	EndElement
+	CharData
+	Comment
+	ProcInst
+	Directive
+)
 
-// End returns the corresponding XML end element.
-func (e StartElement) End() EndElement {
-	return EndElement{e.Name}
-}
-
-// An EndElement represents an XML end element.
-type EndElement struct {
-	Name Name
-}
-
-// A CharData represents XML character data (raw text),
-// in which XML escape sequences have been replaced by
-// the characters they represent.
-type CharData struct {
-	Value []byte
-}
-
-// A Comment represents an XML comment of the form <!--comment-->.
-// The bytes do not include the <!-- and --> comment markers.
-type Comment []byte
-
-// A ProcInst represents an XML processing instruction of the form <?target inst?>
-type ProcInst struct {
+// A Token is a structure holding one of the token types:
+// StartElement, EndElement, CharData, Comment, ProcInst, or Directive.
+type Token struct {
+	Type   TokenType
+	Name   Name
+	Attr   []Attr
+	Value  []byte
 	Target string
-	Inst   []byte
 }
 
-// A Directive represents an XML directive of the form <!text>.
-// The bytes do not include the <! and > markers.
-type Directive []byte
+func (t *Token) reset(tp TokenType) {
+	t.Type = tp
+	t.Name.Local = ""
+	t.Name.Space = ""
+	t.Attr = t.Attr[:0]
+	t.Value = nil
+	t.Target = ""
+}
 
 // A Decoder represents an XML parser reading a particular input stream.
 // The parser assumes that its input is encoded in UTF-8.
@@ -125,13 +114,10 @@ type Decoder struct {
 	free           *stack
 	needClose      bool
 	toClose        Name
-	nextToken      Token
 	ns             map[string]string
 	err            error
 	unmarshalDepth int
-	startElement   *StartElement
-	endElement     *EndElement
-	charData       *CharData
+	token          *Token
 	names          [utf8.RuneSelf][]string
 	tagAttrs       []TagAttrs
 }
@@ -141,15 +127,13 @@ type Decoder struct {
 // do its own buffering.
 func NewDecoder(r io.Reader, tagAttrs []TagAttrs) *Decoder {
 	d := &Decoder{
-		ns:           make(map[string]string),
-		startElement: &StartElement{},
-		endElement:   &EndElement{},
-		charData:     &CharData{},
-		r:            r,
-		data:         make([]byte, 4096),
-		dataR:        0,
-		dataW:        0,
-		tagAttrs:     tagAttrs,
+		ns:       make(map[string]string),
+		token:    &Token{},
+		r:        r,
+		data:     make([]byte, 4096),
+		dataR:    0,
+		dataW:    0,
+		tagAttrs: tagAttrs,
 	}
 	return d
 }
@@ -177,33 +161,28 @@ func NewDecoder(r io.Reader, tagAttrs []TagAttrs) *Decoder {
 // set to the URL identifying its name space when known.
 // If Token encounters an unrecognized name space prefix,
 // it uses the prefix as the Space rather than report an error.
-func (d *Decoder) Token() (Token, error) {
-	var t Token
-	var err error
+func (d *Decoder) Token() (*Token, error) {
 	if d.stk != nil && d.stk.kind == stkEOF {
 		return nil, io.EOF
 	}
-	if d.nextToken != nil {
-		t = d.nextToken
-		d.nextToken = nil
-	} else {
-		if t, err = d.rawToken(); t == nil && err != nil {
-			if err == io.EOF && d.stk != nil && d.stk.kind != stkEOF {
-				err = d.syntaxError("unexpected EOF")
-			}
-			return nil, err
+
+	t, err := d.rawToken()
+	if t == nil && err != nil {
+		if err == io.EOF && d.stk != nil && d.stk.kind != stkEOF {
+			err = d.syntaxError("unexpected EOF")
 		}
-		// We still have a token to process, so clear any
-		// errors (e.g. EOF) and proceed.
-		err = nil
+		return nil, err
 	}
-	switch t1 := t.(type) {
-	case *StartElement:
+	// We still have a token to process, so clear any
+	// errors (e.g. EOF) and proceed.
+	err = nil
+
+	if t.Type == StartElement {
 		// In XML name spaces, the translations listed in the
 		// attributes apply to the element name and
 		// to the other attribute names, so process
 		// the translations first.
-		for _, a := range t1.Attr {
+		for _, a := range t.Attr {
 			if a.Name.Space == xmlnsPrefix {
 				v, ok := d.ns[a.Name.Local]
 				d.pushNs(a.Name.Local, v, ok)
@@ -217,18 +196,15 @@ func (d *Decoder) Token() (Token, error) {
 			}
 		}
 
-		d.pushElement(t1.Name)
-		d.translate(&t1.Name, true)
-		for i := range t1.Attr {
-			d.translate(&t1.Attr[i].Name, false)
+		d.pushElement(t.Name)
+		d.translate(&t.Name, true)
+		for i := range t.Attr {
+			d.translate(&t.Attr[i].Name, false)
 		}
-		t = t1
-
-	case *EndElement:
-		if !d.popElement(t1) {
+	} else if t.Type == EndElement {
+		if !d.popElement(t) {
 			return nil, d.err
 		}
-		t = t1
 	}
 	return t, err
 }
@@ -245,10 +221,9 @@ func (d *Decoder) Skip() error {
 		if err != nil {
 			return err
 		}
-		switch tok.(type) {
-		case *StartElement:
+		if tok.Type == StartElement {
 			depth++
-		case *EndElement:
+		} else if tok.Type == EndElement {
 			if depth == 0 {
 				return nil
 			}
@@ -387,7 +362,7 @@ func (d *Decoder) syntaxError(msg string) error {
 // After popping the element, apply any undo records from
 // the stack to restore the name translations that existed
 // before we saw this element.
-func (d *Decoder) popElement(t *EndElement) bool {
+func (d *Decoder) popElement(t *Token) bool {
 	s := d.pop()
 	name := t.Name
 	switch {
@@ -428,14 +403,14 @@ var errRawToken = errors.New("xml: cannot use RawToken from UnmarshalXML method"
 // RawToken is like [Decoder.Token] but does not verify that
 // start and end elements match and does not translate
 // name space prefixes to their corresponding URLs.
-func (d *Decoder) RawToken() (Token, error) {
+func (d *Decoder) RawToken() (*Token, error) {
 	if d.unmarshalDepth > 0 {
 		return nil, errRawToken
 	}
 	return d.rawToken()
 }
 
-func (d *Decoder) rawToken() (Token, error) {
+func (d *Decoder) rawToken() (*Token, error) {
 	if d.err != nil {
 		return nil, d.err
 	}
@@ -444,8 +419,9 @@ func (d *Decoder) rawToken() (Token, error) {
 		// we returned just the StartElement half.
 		// Return the EndElement half now.
 		d.needClose = false
-		d.endElement.Name = d.toClose
-		return d.endElement, nil
+		d.token.reset(EndElement)
+		d.token.Name = d.toClose
+		return d.token, nil
 	}
 
 	b, ok := d.getc()
@@ -460,8 +436,9 @@ func (d *Decoder) rawToken() (Token, error) {
 		if data == nil {
 			return nil, d.err
 		}
-		d.charData.Value = data
-		return d.charData, nil
+		d.token.reset(CharData)
+		d.token.Value = data
+		return d.token, nil
 	}
 
 	if b, ok = d.mustgetc(); !ok {
@@ -485,8 +462,9 @@ func (d *Decoder) rawToken() (Token, error) {
 			d.err = d.syntaxError("invalid characters between </" + name.Local + " and >")
 			return nil, d.err
 		}
-		d.endElement.Name = name
-		return d.endElement, nil
+		d.token.reset(EndElement)
+		d.token.Name = name
+		return d.token, nil
 
 	case '?':
 		// <?: Processing instruction.
@@ -526,7 +504,10 @@ func (d *Decoder) rawToken() (Token, error) {
 				return nil, d.err
 			}
 		}
-		return ProcInst{target, data}, nil
+		d.token.reset(ProcInst)
+		d.token.Target = target
+		d.token.Value = data
+		return d.token, nil
 
 	case '!':
 		// <!: Maybe comment, maybe CDATA.
@@ -563,7 +544,9 @@ func (d *Decoder) rawToken() (Token, error) {
 			}
 			data := d.buf.Bytes()
 			data = data[0 : len(data)-3] // chop -->
-			return Comment(data), nil
+			d.token.reset(Comment)
+			d.token.Value = data
+			return d.token, nil
 
 		case '[': // <![
 			// Probably <![CDATA[.
@@ -581,8 +564,9 @@ func (d *Decoder) rawToken() (Token, error) {
 			if data == nil {
 				return nil, d.err
 			}
-			d.charData.Value = data
-			return d.charData, nil
+			d.token.reset(CharData)
+			d.token.Value = data
+			return d.token, nil
 		}
 
 		// Probably a directive: <!DOCTYPE ...>, <!ENTITY ...>, etc.
@@ -652,7 +636,9 @@ func (d *Decoder) rawToken() (Token, error) {
 				d.buf.WriteByte(' ')
 			}
 		}
-		return Directive(d.buf.Bytes()), nil
+		d.token.reset(Directive)
+		d.token.Value = d.buf.Bytes()
+		return d.token, nil
 	}
 
 	// Must be an open element like <a href="foo">
@@ -669,8 +655,8 @@ func (d *Decoder) rawToken() (Token, error) {
 		return nil, d.err
 	}
 
-	d.startElement.Name = name
-	d.startElement.Attr = d.startElement.Attr[:0]
+	d.token.reset(StartElement)
+	d.token.Name = name
 	for {
 		d.space()
 		if b, ok = d.mustgetc(); !ok {
@@ -726,7 +712,7 @@ func (d *Decoder) rawToken() (Token, error) {
 			if attrs[i].Name == attrName.Local {
 				attrs[i].buf.Reset()
 				attrs[i].buf.Write(attrValue)
-				d.startElement.Attr = append(d.startElement.Attr, Attr{
+				d.token.Attr = append(d.token.Attr, Attr{
 					Name:  attrName,
 					Value: attrs[i].buf,
 				})
@@ -738,7 +724,7 @@ func (d *Decoder) rawToken() (Token, error) {
 		d.needClose = true
 		d.toClose = name
 	}
-	return d.startElement, nil
+	return d.token, nil
 }
 
 func (d *Decoder) attrval() []byte {

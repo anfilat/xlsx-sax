@@ -79,9 +79,8 @@ func newSheetReader(zipFile *zip.File, sharedStrings sharedStrings, styles *styl
 
 func (s *Sheet) skipToSheetData() error {
 	for t, err := s.decoder.Token(); err == nil; t, err = s.decoder.Token() {
-		switch token := t.(type) {
-		case *xml.StartElement:
-			switch token.Name.Local {
+		if t.Type == xml.StartElement {
+			switch t.Name.Local {
 			case "worksheet":
 				//
 			case "sheetData":
@@ -116,10 +115,10 @@ func (s *Sheet) NextRow() bool {
 
 	t, err := s.decoder.Token()
 	for err == nil {
-		switch token := t.(type) {
-		case *xml.StartElement:
-			if token.Name.Local == "row" {
-				for _, a := range token.Attr {
+		switch t.Type {
+		case xml.StartElement:
+			if t.Name.Local == "row" {
+				for _, a := range t.Attr {
 					if a.Name.Local == "r" {
 						row, er := strconv.Atoi(string(a.Value.Bytes()))
 						if er != nil {
@@ -133,8 +132,8 @@ func (s *Sheet) NextRow() bool {
 				}
 				return true
 			}
-		case *xml.EndElement:
-			if token.Name.Local == "sheetData" {
+		case xml.EndElement:
+			if t.Name.Local == "sheetData" {
 				s.err = io.EOF
 				return false
 			}
@@ -157,12 +156,12 @@ func (s *Sheet) NextCell() bool {
 
 	t, err := s.decoder.Token()
 	for err == nil {
-		switch token := t.(type) {
-		case *xml.StartElement:
-			switch token.Name.Local {
+		switch t.Type {
+		case xml.StartElement:
+			switch t.Name.Local {
 			case "c":
 				var cell []byte
-				for _, a := range token.Attr {
+				for _, a := range t.Attr {
 					switch a.Name.Local {
 					case "t":
 						switch string(a.Value.Bytes()) {
@@ -205,8 +204,8 @@ func (s *Sheet) NextCell() bool {
 			case "t":
 				isT = true
 			}
-		case *xml.EndElement:
-			switch token.Name.Local {
+		case xml.EndElement:
+			switch t.Name.Local {
 			case "c":
 				return true
 			case "row":
@@ -218,12 +217,12 @@ func (s *Sheet) NextCell() bool {
 			case "t":
 				isT = false
 			}
-		case *xml.CharData:
+		case xml.CharData:
 			if !(isV || (isIs && isT)) {
 				break
 			}
 
-			s.cellValue = append(s.cellValue, token.Value...)
+			s.cellValue = append(s.cellValue, t.Value...)
 		}
 
 		t, err = s.decoder.Token()
