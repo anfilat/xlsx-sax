@@ -8,4 +8,5 @@ var (
 	ErrParseWorkbook        = errors.New("parse workbook")
 	ErrSheetNotFound        = errors.New("sheet not found")
 	ErrIncorrectSheet       = errors.New("incorrect sheet")
+	ErrNoColumns            = errors.New("no columns")
 )

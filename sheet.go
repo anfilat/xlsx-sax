@@ -3,6 +3,7 @@ package xlsx
 import (
 	"archive/zip"
 	"io"
+	"sort"
 	"strconv"
 
 	"github.com/anfilat/xlsx-sax/internal/xml"
@@ -11,33 +12,39 @@ import (
 type Sheet struct {
 	zipReader     io.ReadCloser
 	decoder       *xml.Decoder
-	cols          []bool
-	colIndex      []int
+	colGet        []bool
+	colMap        []int
 	countCols     int
 	sharedStrings []string
 }
 
-func newSheetReader(zipFile *zip.File, cols []bool, skip int, sharedStrings []string) (*Sheet, error) {
+func newSheetReader(zipFile *zip.File, cols []int, skip int, sharedStrings []string) (*Sheet, error) {
+	if len(cols) == 0 {
+		return nil, ErrNoColumns
+	}
+
+	sort.Ints(cols)
+
+	colGet := make([]bool, cols[len(cols)-1]+1)
+	colMap := make([]int, cols[len(cols)-1]+1)
+	countCols := 0
+	for _, value := range cols {
+		colGet[value] = true
+		colMap[value] = countCols
+		countCols++
+	}
+
 	reader, err := zipFile.Open()
 	if err != nil {
 		return nil, err
-	}
-
-	countCols := 0
-	colIndex := make([]int, len(cols))
-	for i, value := range cols {
-		if value {
-			colIndex[i] = countCols
-			countCols++
-		}
 	}
 
 	decoder := xml.NewDecoder(reader)
 	sheet := &Sheet{
 		zipReader:     reader,
 		decoder:       decoder,
-		cols:          cols,
-		colIndex:      colIndex,
+		colGet:        colGet,
+		colMap:        colMap,
 		countCols:     countCols,
 		sharedStrings: sharedStrings,
 	}
@@ -136,7 +143,7 @@ func (s *Sheet) Read() ([]string, error) {
 				break
 			}
 
-			if ci >= len(s.cols) || !s.cols[ci] {
+			if ci >= len(s.colGet) || !s.colGet[ci] {
 				break
 			}
 
@@ -149,7 +156,7 @@ func (s *Sheet) Read() ([]string, error) {
 				val = s.sharedStrings[idx]
 			}
 
-			result[s.colIndex[ci]] = val
+			result[s.colMap[ci]] = val
 
 			isV = false
 		}
