@@ -1092,13 +1092,18 @@ func (d *Decoder) nsname() (name Name, ok bool) {
 	if !ok {
 		return
 	}
+
+	if strings.IndexByte(s, ':') == -1 {
+		name.Local = s
+		return name, true
+	}
+
 	count := strings.Count(s, ":")
 	if count > 1 {
 		return name, false
 	}
-	if count == 0 {
-		name.Local = s
-	} else if space, local, ok := strings.Cut(s, ":"); !ok || space == "" || local == "" {
+
+	if space, local, ok := strings.Cut(s, ":"); !ok || space == "" || local == "" {
 		name.Local = s
 	} else {
 		name.Space = space
