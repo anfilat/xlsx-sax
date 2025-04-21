@@ -3,6 +3,7 @@ package xlsx
 import (
 	"bytes"
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,6 +39,9 @@ func TestOpenSheet(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"This is text, rich text", "1245237", "5"}, row)
 
+	isRow = sheet.Next()
+	require.True(t, isRow)
+
 	row, err = sheet.Read()
 	require.NoError(t, err)
 	require.Equal(t, []string{"The same", "4534567", "0"}, row)
@@ -59,6 +63,30 @@ func TestOpenEmptySheet(t *testing.T) {
 
 	isRow := sheet.Next()
 	require.False(t, isRow)
+}
+
+func TestReadSheet(t *testing.T) {
+	data, err := os.ReadFile("testdata/test1.xlsx")
+	require.NoError(t, err)
+
+	br := bytes.NewReader(data)
+	xlsx, err := New(br, br.Size())
+	require.NoError(t, err)
+
+	sheet, err := xlsx.OpenSheetByOrder(0, []bool{true, true, false, true}, 1)
+	require.NoError(t, err)
+
+	sum := 0
+	for sheet.Next() {
+		row, err := sheet.Read()
+		require.NoError(t, err)
+		if row[2] != "" {
+			n, err := strconv.Atoi(row[2])
+			require.NoError(t, err)
+			sum += n
+		}
+	}
+	require.Equal(t, 5, sum)
 }
 
 func BenchmarkXlsx1(b *testing.B) {
