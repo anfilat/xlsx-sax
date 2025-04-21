@@ -2,6 +2,7 @@ package xlsx
 
 import (
 	"archive/zip"
+	"fmt"
 	"io"
 )
 
@@ -109,12 +110,12 @@ func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files m
 	for _, sheet := range wb.Sheets {
 		path, ok := sheets[sheet.ID]
 		if !ok {
-			return ErrSheetNotFound
+			return fmt.Errorf("sheet RID %s doesn't found: %w", sheet.ID, ErrSheetNotFound)
 		}
 
 		file, ok := files[path]
 		if !ok {
-			return ErrSheetNotExist
+			return fmt.Errorf("sheet %s doesn't exist: %w", path, ErrSheetNotExist)
 		}
 
 		x.sheetNameFile[sheet.Name] = file
