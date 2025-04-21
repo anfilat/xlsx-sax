@@ -3,6 +3,7 @@ package xlsx
 import (
 	"io"
 	"strconv"
+	"unsafe"
 
 	"github.com/anfilat/xlsx-sax/internal/xml"
 )
@@ -11,6 +12,7 @@ func readSharedStrings(reader io.Reader) ([]string, error) {
 	decoder := xml.NewDecoder(reader)
 
 	var result []string
+	ar := &arena{}
 	isT := false
 	isR := false
 	str := ""
@@ -61,12 +63,35 @@ func readSharedStrings(reader io.Reader) ([]string, error) {
 		case xml.CharData:
 			if isT {
 				if isR {
-					str += string(token)
+					str += ar.toString(token)
 				} else {
-					str = string(token)
+					str = ar.toString(token)
 				}
 			}
 		}
 	}
 	return result, nil
+}
+
+type arena struct {
+	alloc []byte
+}
+
+func (a *arena) toString(b []byte) string {
+	n := len(b)
+	if cap(a.alloc)-len(a.alloc) < n {
+		a.reserve(n)
+	}
+
+	pos := len(a.alloc)
+	data := a.alloc[pos : pos+n : pos+n]
+	a.alloc = a.alloc[:pos+n]
+
+	copy(data, b)
+
+	return *(*string)(unsafe.Pointer(&data))
+}
+
+func (a *arena) reserve(n int) {
+	a.alloc = make([]byte, 0, max(16*1024, n))
 }
