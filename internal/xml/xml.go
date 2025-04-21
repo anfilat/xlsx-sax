@@ -97,23 +97,6 @@ type ProcInst struct {
 // The bytes do not include the <! and > markers.
 type Directive []byte
 
-// A TokenReader is anything that can decode a stream of XML tokens, including a
-// [Decoder].
-//
-// When Token encounters an error or end-of-file condition after successfully
-// reading a token, it returns the token. It may return the (non-nil) error from
-// the same call or return the error (and a nil token) from a subsequent call.
-// An instance of this general case is that a TokenReader returning a non-nil
-// token at the end of the token stream may return either io.EOF or a nil error.
-// The next Read should return nil, [io.EOF].
-//
-// Implementations of Token are discouraged from returning a nil token with a
-// nil error. Callers should treat a return of nil, nil as indicating that
-// nothing happened; in particular it does not indicate EOF.
-type TokenReader interface {
-	Token() (Token, error)
-}
-
 // A Decoder represents an XML parser reading a particular input stream.
 // The parser assumes that its input is encoded in UTF-8.
 type Decoder struct {
@@ -137,7 +120,6 @@ type Decoder struct {
 	data           []byte
 	dataR          int
 	dataW          int
-	t              TokenReader
 	buf            bytes.Buffer
 	stk            *stack
 	free           *stack
@@ -454,9 +436,6 @@ func (d *Decoder) RawToken() (Token, error) {
 }
 
 func (d *Decoder) rawToken() (Token, error) {
-	if d.t != nil {
-		return d.t.Token()
-	}
 	if d.err != nil {
 		return nil, d.err
 	}
