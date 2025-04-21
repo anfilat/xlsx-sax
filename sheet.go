@@ -5,7 +5,7 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/anfilat/xlsx-sax/xml"
+	"github.com/anfilat/xlsx-sax/internal/xml"
 )
 
 type Sheet struct {

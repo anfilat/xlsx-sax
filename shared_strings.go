@@ -4,7 +4,7 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/anfilat/xlsx-sax/xml"
+	"github.com/anfilat/xlsx-sax/internal/xml"
 )
 
 func readSharedStrings(reader io.Reader) ([]string, error) {
