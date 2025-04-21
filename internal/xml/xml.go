@@ -923,6 +923,17 @@ Input:
 		if !ok {
 			break Input
 		}
+		if b != '<' && b != ']' && b != '>' && b != '&' && b != '\r' && b != '\n' && (quote == -1 || b != byte(quote)) && d.dataR < d.dataW {
+			p := d.dataR
+			c := d.data[p]
+			for c != '<' && c != ']' && c != '>' && c != '&' && c != '\r' && c != '\n' && (quote == -1 || c != byte(quote)) && p+1 < d.dataW {
+				p++
+				c = d.data[p]
+			}
+			d.buf.Write(d.data[d.dataR-1 : p])
+			b = d.data[p]
+			d.dataR = p + 1
+		}
 
 		// <![CDATA[ section ends with ]]>.
 		// It is an error for ]]> to appear in ordinary text,
