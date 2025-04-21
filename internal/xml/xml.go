@@ -743,17 +743,27 @@ func (d *Decoder) attrval() []byte {
 
 // Skip spaces if any
 func (d *Decoder) space() {
+	if d.err != nil {
+		return
+	}
 	for {
-		b, ok := d.getc()
-		if !ok {
-			return
+		if d.dataR == d.dataW {
+			d.fillData()
+			if d.err != nil {
+				return
+			}
 		}
-		switch b {
-		case ' ', '\r', '\n', '\t':
-		default:
-			d.ungetc()
-			return
+
+		p := d.dataR
+		for p < d.dataW {
+			b := d.data[p]
+			if b != ' ' && b != '\r' && b != '\n' && b != '\t' {
+				d.dataR = p
+				return
+			}
+			p++
 		}
+		d.dataR = d.dataW
 	}
 }
 
