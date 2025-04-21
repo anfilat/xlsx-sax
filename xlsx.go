@@ -104,9 +104,9 @@ func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files m
 		return err
 	}
 
-	x.sheetNameFile = make(map[string]*zip.File, len(wb.Sheets.Sheet))
-	x.sheetIDFile = make(map[string]*zip.File, len(wb.Sheets.Sheet))
-	for _, sheet := range wb.Sheets.Sheet {
+	x.sheetNameFile = make(map[string]*zip.File, len(wb.Sheets))
+	x.sheetIDFile = make(map[string]*zip.File, len(wb.Sheets))
+	for _, sheet := range wb.Sheets {
 		path, ok := sheets[sheet.ID]
 		if !ok {
 			return ErrSheetNotFound
