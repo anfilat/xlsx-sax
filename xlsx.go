@@ -2,7 +2,7 @@ package xlsx
 
 import (
 	"archive/zip"
-	"bytes"
+	"io"
 )
 
 type Xlsx struct {
@@ -12,13 +12,8 @@ type Xlsx struct {
 	sharedStrings []string
 }
 
-type Params struct {
-	Data []byte
-}
-
-func New(params Params) (*Xlsx, error) {
-	br := bytes.NewReader(params.Data)
-	zipReader, err := zip.NewReader(br, br.Size())
+func New(reader io.ReaderAt, size int64) (*Xlsx, error) {
+	zipReader, err := zip.NewReader(reader, size)
 	if err != nil {
 		return nil, err
 	}
