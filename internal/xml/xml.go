@@ -167,6 +167,7 @@ type Decoder struct {
 	startElement   *StartElement
 	endElement     *EndElement
 	charData       *CharData
+	names          [utf8.RuneSelf][]string
 }
 
 // NewDecoder creates a new XML parser reading from r.
@@ -1198,8 +1199,19 @@ func (d *Decoder) name() (s string, ok bool) {
 		return "", false
 	}
 
-	result := string(d.data[d.dataR:p])
+	res := d.data[d.dataR:p]
 	d.dataR = p
+	if res[0] >= utf8.RuneSelf {
+		return string(res), true
+	}
+	names := d.names[res[0]]
+	for i := 0; i < len(names); i++ {
+		if string(res) == names[i] {
+			return names[i], true
+		}
+	}
+	result := string(res)
+	d.names[res[0]] = append(d.names[res[0]], result)
 	return result, true
 }
 
@@ -1236,7 +1248,7 @@ func (d *Decoder) readName() (ok bool) {
 	return result
 }
 
-var nameByte = [0x80]bool{
+var nameByte = [utf8.RuneSelf]bool{
 	'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true,
 	'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true,
 	'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true,
