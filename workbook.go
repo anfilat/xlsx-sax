@@ -5,8 +5,8 @@ import (
 	"io"
 )
 
-func readWorkbook(rd io.Reader) (*workbook, error) {
-	decoder := xml.NewDecoder(rd)
+func readWorkbook(reader io.Reader) (*workbook, error) {
+	decoder := xml.NewDecoder(reader)
 	data := &workbook{}
 	err := decoder.Decode(data)
 	if err != nil {

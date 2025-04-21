@@ -11,7 +11,8 @@ import (
 type Sheet struct {
 	zipReader     io.ReadCloser
 	decoder       *xml.Decoder
-	sharedStrings []string
+	sharedStrings sharedStrings
+	styles        *styles
 	err           error
 
 	cellValue      []byte
@@ -21,7 +22,7 @@ type Sheet struct {
 	Col int
 }
 
-func newSheetReader(zipFile *zip.File, sharedStrings []string) (*Sheet, error) {
+func newSheetReader(zipFile *zip.File, sharedStrings sharedStrings, styles *styles) (*Sheet, error) {
 	reader, err := zipFile.Open()
 	if err != nil {
 		return nil, err
@@ -32,6 +33,7 @@ func newSheetReader(zipFile *zip.File, sharedStrings []string) (*Sheet, error) {
 		zipReader:     reader,
 		decoder:       decoder,
 		sharedStrings: sharedStrings,
+		styles:        styles,
 	}
 
 	err = sheet.skipToSheetData()
@@ -163,7 +165,7 @@ func (s *Sheet) CellValue() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return s.sharedStrings[idx], nil
+		return s.sharedStrings.get(idx)
 	}
 
 	return string(s.cellValue), nil

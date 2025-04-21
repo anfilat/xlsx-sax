@@ -1,17 +1,24 @@
 package xlsx
 
 import (
+	"github.com/anfilat/xlsx-sax/internal/xml"
 	"io"
 	"strconv"
-	"unsafe"
-
-	"github.com/anfilat/xlsx-sax/internal/xml"
 )
 
-func readSharedStrings(reader io.Reader) ([]string, error) {
+type sharedStrings []string
+
+func (s sharedStrings) get(idx int) (string, error) {
+	if idx < 0 || idx >= len(s) {
+		return "", ErrIncorrectSharedString
+	}
+	return s[idx], nil
+}
+
+func readSharedStrings(reader io.Reader) (sharedStrings, error) {
 	decoder := xml.NewDecoder(reader)
 
-	var result []string
+	var result sharedStrings
 	ar := &arena{}
 	isT := false
 	isR := false
@@ -71,27 +78,4 @@ func readSharedStrings(reader io.Reader) ([]string, error) {
 		}
 	}
 	return result, nil
-}
-
-type arena struct {
-	alloc []byte
-}
-
-func (a *arena) toString(b []byte) string {
-	n := len(b)
-	if cap(a.alloc)-len(a.alloc) < n {
-		a.reserve(n)
-	}
-
-	pos := len(a.alloc)
-	data := a.alloc[pos : pos+n : pos+n]
-	a.alloc = a.alloc[:pos+n]
-
-	copy(data, b)
-
-	return *(*string)(unsafe.Pointer(&data))
-}
-
-func (a *arena) reserve(n int) {
-	a.alloc = make([]byte, 0, max(16*1024, n))
 }

@@ -11,7 +11,8 @@ type Xlsx struct {
 	sheetFile     []*zip.File
 	sheetNames    []string
 	sheetNameFile map[string]*zip.File
-	sharedStrings []string
+	sharedStrings sharedStrings
+	styles        *styles
 }
 
 func New(reader io.ReaderAt, size int64) (*Xlsx, error) {
@@ -43,7 +44,7 @@ func (x *Xlsx) load() error {
 		return ErrWorkbookRelsNotExist
 	}
 
-	sheets, sharedStringPath, err := x.getWorkbookRels(workbookRelsFile)
+	sheets, sharedStringPath, stylesParth, err := x.getWorkbookRels(workbookRelsFile)
 	if err != nil {
 		return err
 	}
@@ -58,8 +59,17 @@ func (x *Xlsx) load() error {
 		return err
 	}
 
-	if sharedStringFile, ok := files[sharedStringPath]; ok {
+	sharedStringFile, ok := files[sharedStringPath]
+	if ok {
 		err = x.fillSharedStrings(sharedStringFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	stylesFile, ok := files[stylesParth]
+	if ok {
+		err = x.fillStyles(stylesFile)
 		if err != nil {
 			return err
 		}
@@ -68,30 +78,33 @@ func (x *Xlsx) load() error {
 	return nil
 }
 
-func (x *Xlsx) getWorkbookRels(zipFile *zip.File) (map[string]string, string, error) {
+func (x *Xlsx) getWorkbookRels(zipFile *zip.File) (map[string]string, string, string, error) {
 	reader, err := zipFile.Open()
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	defer reader.Close()
 
 	rels, err := readWorkbookRels(reader)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 
 	sheets := make(map[string]string, len(rels.Relationship))
-	var sharedStrings string
+	var sharedStrs string
+	var styles string
 	for _, rel := range rels.Relationship {
 		switch rel.Type {
 		case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet":
 			sheets[rel.ID] = "xl/" + rel.Target
 		case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings":
-			sharedStrings = "xl/" + rel.Target
+			sharedStrs = "xl/" + rel.Target
+		case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles":
+			styles = "xl/" + rel.Target
 		}
 	}
 
-	return sheets, sharedStrings, nil
+	return sheets, sharedStrs, styles, nil
 }
 
 func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files map[string]*zip.File) error {
@@ -142,6 +155,20 @@ func (x *Xlsx) fillSharedStrings(zipFile *zip.File) error {
 	return nil
 }
 
+func (x *Xlsx) fillStyles(zipFile *zip.File) error {
+	reader, err := zipFile.Open()
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	x.styles, err = readStyles(reader)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (x *Xlsx) SheetNames() []string {
 	result := make([]string, len(x.sheetNames))
 	copy(result, x.sheetNames)
@@ -154,7 +181,7 @@ func (x *Xlsx) OpenSheetByName(name string) (*Sheet, error) {
 		return nil, fmt.Errorf("can not find worksheet %s: %w", name, ErrSheetNotFound)
 	}
 
-	return newSheetReader(file, x.sharedStrings)
+	return newSheetReader(file, x.sharedStrings, x.styles)
 }
 
 func (x *Xlsx) OpenSheetByOrder(n int) (*Sheet, error) {
@@ -163,5 +190,5 @@ func (x *Xlsx) OpenSheetByOrder(n int) (*Sheet, error) {
 	}
 
 	file := x.sheetFile[n]
-	return newSheetReader(file, x.sharedStrings)
+	return newSheetReader(file, x.sharedStrings, x.styles)
 }
