@@ -154,7 +154,6 @@ type Decoder struct {
 	data           []byte
 	dataR          int
 	dataW          int
-	dataErr        error
 	t              TokenReader
 	buf            bytes.Buffer
 	stk            *stack
@@ -882,9 +881,16 @@ func (d *Decoder) ungetc() {
 }
 
 func (d *Decoder) fillData() {
-	n, err := d.r.Read(d.data)
+	if d.dataR < d.dataW {
+		copy(d.data, d.data[d.dataR:d.dataW])
+		d.dataW -= d.dataR
+	} else {
+		d.dataW = 0
+	}
 	d.dataR = 0
-	d.dataW = n
+
+	n, err := d.r.Read(d.data[d.dataW:])
+	d.dataW += n
 	if err != nil {
 		if err == io.EOF {
 			if n == 0 {
@@ -1116,13 +1122,36 @@ func (d *Decoder) nsname() (name Name, ok bool) {
 // Do not set d.err if the name is missing (unless unexpected EOF is received):
 // let the caller provide better context.
 func (d *Decoder) name() (s string, ok bool) {
-	d.buf.Reset()
-	if !d.readName() {
+	p := d.dataR
+	for {
+		if d.err == nil && p == d.dataW {
+			p -= d.dataR
+			d.fillData()
+		}
+
+		if d.err != nil {
+			return "", false
+		}
+
+		for p < d.dataW {
+			b := d.data[p]
+			if b < utf8.RuneSelf && !isNameByte(b) {
+				break
+			}
+			p++
+		}
+		if p < d.dataW {
+			break
+		}
+	}
+
+	if p == d.dataR {
 		return "", false
 	}
 
-	b := d.buf.Bytes()
-	return string(b), true
+	result := string(d.data[d.dataR:p])
+	d.dataR = p
+	return result, true
 }
 
 // Read a name and append its bytes to d.buf.
