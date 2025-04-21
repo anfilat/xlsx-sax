@@ -103,9 +103,12 @@ func (x *Xlsx) getWorkbookRels(zipFile *zip.File) (map[string]string, error) {
 
 	sheets := make(map[string]string, len(rels.Relationship))
 	for _, rel := range rels.Relationship {
-		switch rel.Type {
-		case "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet":
-			sheets[rel.ID] = "xl/" + rel.Target
+		if rel.Type == "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" {
+			if strings.HasPrefix(rel.Target, "/xl/") {
+				sheets[rel.ID] = rel.Target[1:]
+			} else {
+				sheets[rel.ID] = "xl/" + rel.Target
+			}
 		}
 	}
 
@@ -132,12 +135,12 @@ func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files m
 	for _, sheet := range wb.Sheets {
 		path, ok := sheets[sheet.ID]
 		if !ok {
-			return fmt.Errorf("sheet RID %s doesn't found: %w", sheet.ID, ErrParseWorkbook)
+			continue
 		}
 
 		file, ok := files[path]
 		if !ok {
-			return fmt.Errorf("sheet %s doesn't exist: %w", path, ErrParseWorkbook)
+			continue
 		}
 
 		x.sheetFile = append(x.sheetFile, file)
