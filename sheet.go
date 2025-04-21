@@ -2,10 +2,11 @@ package xlsx
 
 import (
 	"archive/zip"
-	"encoding/xml"
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/anfilat/xlsx-sax/xml"
 )
 
 type Sheet struct {

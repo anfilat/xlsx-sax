@@ -1,9 +1,10 @@
 package xlsx
 
 import (
-	"encoding/xml"
 	"io"
 	"strconv"
+
+	"github.com/anfilat/xlsx-sax/xml"
 )
 
 func readSharedStrings(reader io.Reader) ([]string, error) {

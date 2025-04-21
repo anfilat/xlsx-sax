@@ -17,7 +17,7 @@ func TestNew(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, xlsx.sheetNameFile, 2)
 	require.Len(t, xlsx.sheetFile, 2)
-	require.Len(t, xlsx.sharedStrings, 7)
+	require.Len(t, xlsx.sharedStrings, 9)
 }
 
 func TestOpenSheet(t *testing.T) {
@@ -59,4 +59,22 @@ func TestOpenEmptySheet(t *testing.T) {
 
 	isRow := sheet.Next()
 	require.False(t, isRow)
+}
+
+func BenchmarkXlsx1(b *testing.B) {
+	data, _ := os.ReadFile("testdata/test1.xlsx")
+	br := bytes.NewReader(data)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		xlsx, _ := New(br, br.Size())
+		sheet, _ := xlsx.OpenSheetByOrder(0, []bool{true, true, false, true}, 1)
+
+		var all [][]string
+		for sheet.Next() {
+			row, _ := sheet.Read()
+			all = append(all, row)
+		}
+	}
 }
