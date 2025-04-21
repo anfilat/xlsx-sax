@@ -162,7 +162,6 @@ type Decoder struct {
 	nextByte       int
 	ns             map[string]string
 	err            error
-	offset         int64
 	unmarshalDepth int
 	startElement   *StartElement
 	endElement     *EndElement
@@ -871,15 +870,7 @@ func (d *Decoder) getc() (b byte, ok bool) {
 			return 0, false
 		}
 	}
-	d.offset++
 	return b, true
-}
-
-// InputOffset returns the input stream byte offset of the current decoder position.
-// The offset gives the location of the end of the most recently returned token
-// and the beginning of the next token.
-func (d *Decoder) InputOffset() int64 {
-	return d.offset
 }
 
 // Must read a single byte.
@@ -898,7 +889,6 @@ func (d *Decoder) mustgetc() (b byte, ok bool) {
 // Unread a single byte.
 func (d *Decoder) ungetc(b byte) {
 	d.nextByte = int(b)
-	d.offset--
 }
 
 var entity = map[string]rune{
