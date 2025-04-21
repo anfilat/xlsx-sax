@@ -50,6 +50,7 @@ func newSheetReader(zipFile *zip.File, sharedStrings sharedStrings, styles *styl
 		sharedStrings: sharedStrings,
 		styles:        styles,
 		date1904:      date1904,
+		cellValue:     make([]byte, 0),
 	}
 
 	err = sheet.skipToSheetData()
@@ -181,7 +182,7 @@ func (s *Sheet) NextCell() bool {
 				}
 
 				s.Col = columnIndex(cell)
-				s.cellValue = nil
+				s.cellValue = s.cellValue[:0]
 			case "v":
 				isV = true
 			case "is":
@@ -207,7 +208,7 @@ func (s *Sheet) NextCell() bool {
 				break
 			}
 
-			s.cellValue = token.Copy()
+			s.cellValue = append(s.cellValue, token...)
 		}
 
 		t, err = s.decoder.Token()
