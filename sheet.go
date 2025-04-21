@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"encoding/xml"
 	"io"
+	"strconv"
+	"strings"
 )
 
 type Sheet struct {
@@ -80,4 +82,61 @@ func (s *Sheet) Next() bool {
 		}
 	}
 	return false
+}
+
+func (s *Sheet) Read(row *[]string) error {
+	isV := false
+	isSharedString := false
+	cellName := ""
+	for t, err := s.decoder.Token(); err == nil; t, err = s.decoder.Token() {
+		switch token := t.(type) {
+		case xml.StartElement:
+			switch token.Name.Local {
+			case "c":
+				isSharedString = false
+				cellName = ""
+				for _, a := range token.Attr {
+					switch a.Name.Local {
+					case "t":
+						isSharedString = a.Value == "s"
+					case "r":
+						cellName = a.Value
+					}
+				}
+			case "v":
+				isV = true
+			}
+		case xml.EndElement:
+			isV = false
+			if token.Name.Local == "row" {
+				return nil
+			}
+		case xml.CharData:
+			if !isV {
+				break
+			}
+
+			if cellName == "" {
+				return ErrIncorrectSheet
+			}
+
+			columnName := strings.TrimRight(cellName, "0123456789")
+			_ = columnIndex(columnName)
+
+			val := string(token)
+			if isSharedString {
+				idx, err := strconv.Atoi(val)
+				if err != nil {
+					return err
+				}
+				val = s.sharedStrings[idx]
+			}
+
+			*row = append(*row, val)
+
+			isV = false
+		}
+	}
+
+	return io.EOF
 }

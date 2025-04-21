@@ -7,4 +7,5 @@ var (
 	ErrWorkbookNotExist     = errors.New("parse xlsx file failed: xl/workbook.xml doesn't exist")
 	ErrParseWorkbook        = errors.New("parse workbook")
 	ErrSheetNotFound        = errors.New("sheet not found")
+	ErrIncorrectSheet       = errors.New("incorrect sheet")
 )

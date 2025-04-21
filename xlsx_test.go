@@ -28,8 +28,36 @@ func TestOpenSheet(t *testing.T) {
 	xlsx, err := New(br, br.Size())
 	require.NoError(t, err)
 
-	_, err = xlsx.OpenSheetByOrder(0, &SheetParams{
+	sheet, err := xlsx.OpenSheetByOrder(0, &SheetParams{
 		Skip: 1,
 	})
 	require.NoError(t, err)
+
+	isRow := sheet.Next()
+	require.True(t, isRow)
+
+	var row []string
+	err = sheet.Read(&row)
+	require.NoError(t, err)
+	require.Equal(t, []string{"This is text, rich text", "1245237", "something", "5", "Filled"}, row)
+
+	err = sheet.Close()
+	require.NoError(t, err)
+}
+
+func TestOpenEmptySheet(t *testing.T) {
+	data, err := os.ReadFile("testdata/empty.xlsx")
+	require.NoError(t, err)
+
+	br := bytes.NewReader(data)
+	xlsx, err := New(br, br.Size())
+	require.NoError(t, err)
+
+	sheet, err := xlsx.OpenSheetByOrder(0, &SheetParams{
+		Skip: 1,
+	})
+	require.NoError(t, err)
+
+	isRow := sheet.Next()
+	require.False(t, isRow)
 }
