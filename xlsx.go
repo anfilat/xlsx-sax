@@ -45,7 +45,7 @@ func (x *Xlsx) load() error {
 		return ErrWorkbookRelsNotExist
 	}
 
-	sheets, sharedStringPath, stylesParth, err := x.getWorkbookRels(workbookRelsFile)
+	sheets, sharedStringPath, stylesPath, err := x.getWorkbookRels(workbookRelsFile)
 	if err != nil {
 		return err
 	}
@@ -68,7 +68,7 @@ func (x *Xlsx) load() error {
 		}
 	}
 
-	stylesFile, ok := files[stylesParth]
+	stylesFile, ok := files[stylesPath]
 	if ok {
 		err = x.fillStyles(stylesFile)
 		if err != nil {
