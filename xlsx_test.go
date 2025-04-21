@@ -16,6 +16,6 @@ func TestNew(t *testing.T) {
 	xlsx, err := New(br, br.Size())
 	require.NoError(t, err)
 	require.Len(t, xlsx.sheetNameFile, 2)
-	require.Len(t, xlsx.sheetIDFile, 2)
+	require.Len(t, xlsx.sheetFile, 2)
 	require.Len(t, xlsx.sharedStrings, 1)
 }

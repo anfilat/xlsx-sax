@@ -8,8 +8,8 @@ import (
 
 type Xlsx struct {
 	zip           *zip.Reader
+	sheetFile     []*zip.File
 	sheetNameFile map[string]*zip.File
-	sheetIDFile   map[string]*zip.File
 	sharedStrings []string
 }
 
@@ -105,8 +105,8 @@ func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files m
 		return err
 	}
 
+	x.sheetFile = make([]*zip.File, 0, len(wb.Sheets))
 	x.sheetNameFile = make(map[string]*zip.File, len(wb.Sheets))
-	x.sheetIDFile = make(map[string]*zip.File, len(wb.Sheets))
 	for _, sheet := range wb.Sheets {
 		path, ok := sheets[sheet.ID]
 		if !ok {
@@ -118,8 +118,8 @@ func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files m
 			return fmt.Errorf("sheet %s doesn't exist: %w", path, ErrSheetNotExist)
 		}
 
+		x.sheetFile = append(x.sheetFile, file)
 		x.sheetNameFile[sheet.Name] = file
-		x.sheetIDFile[sheet.SheetId] = file
 	}
 
 	return nil
