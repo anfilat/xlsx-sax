@@ -117,34 +117,6 @@ type TokenReader interface {
 // A Decoder represents an XML parser reading a particular input stream.
 // The parser assumes that its input is encoded in UTF-8.
 type Decoder struct {
-	// Strict defaults to true, enforcing the requirements
-	// of the XML specification.
-	// If set to false, the parser allows input containing common
-	// mistakes:
-	//	* If an element is missing an end tag, the parser invents
-	//	  end tags as necessary to keep the return values from Token
-	//	  properly balanced.
-	//	* In attribute values and character data, unknown or malformed
-	//	  character entities (sequences beginning with &) are left alone.
-	//
-	// Setting:
-	//
-	//	d.Strict = false
-	//	d.AutoClose = xml.HTMLAutoClose
-	//	d.Entity = xml.HTMLEntity
-	//
-	// creates a parser that can handle typical HTML.
-	//
-	// Strict mode does not enforce the requirements of the XML name spaces TR.
-	// In particular it does not reject name space tags using undefined prefixes.
-	// Such tags are recorded with the unknown prefix as the name space URL.
-	Strict bool
-
-	// When Strict == false, AutoClose indicates a set of elements to
-	// consider closed immediately after they are opened, regardless
-	// of whether an end element is present.
-	AutoClose []string
-
 	// Entity can be used to map non-standard entity names to string replacements.
 	// The parser behaves as if these standard mappings are present in the map,
 	// regardless of the actual map content:
@@ -188,7 +160,6 @@ type Decoder struct {
 func NewDecoder(r io.Reader, tagAttrs []TagAttrs) *Decoder {
 	d := &Decoder{
 		ns:           make(map[string]string),
-		Strict:       true,
 		startElement: &StartElement{},
 		endElement:   &EndElement{},
 		charData:     &CharData{},
@@ -243,12 +214,6 @@ func (d *Decoder) Token() (Token, error) {
 		// We still have a token to process, so clear any
 		// errors (e.g. EOF) and proceed.
 		err = nil
-	}
-	if !d.Strict {
-		if t1, ok := d.autoClose(t); ok {
-			d.nextToken = t
-			t = t1
-		}
 	}
 	switch t1 := t.(type) {
 	case *StartElement:
@@ -448,12 +413,6 @@ func (d *Decoder) popElement(t *EndElement) bool {
 		d.err = d.syntaxError("unexpected end element </" + name.Local + ">")
 		return false
 	case s.name.Local != name.Local:
-		if !d.Strict {
-			d.needClose = true
-			d.toClose = t.Name
-			t.Name = s.name
-			return true
-		}
 		d.err = d.syntaxError("element <" + s.name.Local + "> closed by </" + name.Local + ">")
 		return false
 	case s.name.Space != name.Space:
@@ -480,25 +439,6 @@ func (d *Decoder) popElement(t *EndElement) bool {
 	}
 
 	return true
-}
-
-// If the top element on the stack is autoclosing and
-// t is not the end tag, invent the end tag.
-func (d *Decoder) autoClose(t Token) (Token, bool) {
-	if d.stk == nil || d.stk.kind != stkStart {
-		return nil, false
-	}
-	for _, s := range d.AutoClose {
-		if strings.EqualFold(s, d.stk.name.Local) {
-			// This one should be auto closed if t doesn't close it.
-			et, ok := t.(*EndElement)
-			if !ok || !strings.EqualFold(et.Name.Local, d.stk.name.Local) {
-				return &EndElement{d.stk.name}, true
-			}
-			break
-		}
-	}
-	return nil, false
 }
 
 var errRawToken = errors.New("xml: cannot use RawToken from UnmarshalXML method")
@@ -832,28 +772,8 @@ func (d *Decoder) attrval() []byte {
 		return d.text(int(b))
 	}
 	// Handle unquoted attribute values for strict parsers
-	if d.Strict {
-		d.err = d.syntaxError("unquoted or missing attribute value in element")
-		return nil
-	}
-	// Handle unquoted attribute values for unstrict parsers
-	d.ungetc()
-	d.buf.Reset()
-	for {
-		b, ok = d.mustgetc()
-		if !ok {
-			return nil
-		}
-		// https://www.w3.org/TR/REC-html40/intro/sgmltut.html#h-3.2.2
-		if 'a' <= b && b <= 'z' || 'A' <= b && b <= 'Z' ||
-			'0' <= b && b <= '9' || b == '_' || b == ':' || b == '-' {
-			d.buf.WriteByte(b)
-		} else {
-			d.ungetc()
-			break
-		}
-	}
-	return d.buf.Bytes()
+	d.err = d.syntaxError("unquoted or missing attribute value in element")
+	return nil
 }
 
 // Skip spaces if any
@@ -1060,10 +980,6 @@ Input:
 			if haveText {
 				d.buf.Truncate(before)
 				d.buf.WriteString(text)
-				b0, b1 = 0, 0
-				continue Input
-			}
-			if !d.Strict {
 				b0, b1 = 0, 0
 				continue Input
 			}
