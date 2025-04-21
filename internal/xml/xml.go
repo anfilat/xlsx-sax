@@ -1199,12 +1199,7 @@ func (d *Decoder) name() (s string, ok bool) {
 		return "", false
 	}
 
-	// Now we check the characters.
 	b := d.buf.Bytes()
-	if !isName(b) {
-		d.err = d.syntaxError("invalid XML name: " + string(b))
-		return "", false
-	}
 	return string(b), true
 }
 
