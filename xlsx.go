@@ -7,6 +7,8 @@ import (
 
 type Xlsx struct {
 	zip           *zip.Reader
+	sheetNameFile map[string]*zip.File
+	sheetIDFile   map[string]*zip.File
 	sharedStrings []string
 }
 
@@ -44,14 +46,23 @@ func (x *Xlsx) load() error {
 		return ErrWorkbookRelsNotExist
 	}
 
-	_, sharedStringPath, err := x.readWorkbookRels(workbookRelsFile)
+	sheets, sharedStringPath, err := x.getWorkbookRels(workbookRelsFile)
 	if err != nil {
 		return err
 	}
 
-	sharedStringFile, ok := files[sharedStringPath]
-	if ok {
-		err = x.readSharedStrings(sharedStringFile)
+	workbookFile, ok := files["xl/workbook.xml"]
+	if !ok {
+		return ErrWorkbookNotExist
+	}
+
+	err = x.fillWorkbook(workbookFile, sheets, files)
+	if err != nil {
+		return err
+	}
+
+	if sharedStringFile, ok := files[sharedStringPath]; ok {
+		err = x.fillSharedStrings(sharedStringFile)
 		if err != nil {
 			return err
 		}
@@ -60,8 +71,8 @@ func (x *Xlsx) load() error {
 	return nil
 }
 
-func (x *Xlsx) readWorkbookRels(file *zip.File) (map[string]string, string, error) {
-	reader, err := file.Open()
+func (x *Xlsx) getWorkbookRels(zipFile *zip.File) (map[string]string, string, error) {
+	reader, err := zipFile.Open()
 	if err != nil {
 		return nil, "", err
 	}
@@ -86,8 +97,40 @@ func (x *Xlsx) readWorkbookRels(file *zip.File) (map[string]string, string, erro
 	return sheets, sharedStrings, nil
 }
 
-func (x *Xlsx) readSharedStrings(file *zip.File) error {
-	reader, err := file.Open()
+func (x *Xlsx) fillWorkbook(zipFile *zip.File, sheets map[string]string, files map[string]*zip.File) error {
+	reader, err := zipFile.Open()
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	wb, err := readWorkbook(reader)
+	if err != nil {
+		return err
+	}
+
+	x.sheetNameFile = make(map[string]*zip.File, len(wb.Sheets.Sheet))
+	x.sheetIDFile = make(map[string]*zip.File, len(wb.Sheets.Sheet))
+	for _, sheet := range wb.Sheets.Sheet {
+		path, ok := sheets[sheet.ID]
+		if !ok {
+			return ErrSheetNotFound
+		}
+
+		file, ok := files[path]
+		if !ok {
+			return ErrSheetNotExist
+		}
+
+		x.sheetNameFile[sheet.Name] = file
+		x.sheetIDFile[sheet.SheetId] = file
+	}
+
+	return nil
+}
+
+func (x *Xlsx) fillSharedStrings(zipFile *zip.File) error {
+	reader, err := zipFile.Open()
 	if err != nil {
 		return err
 	}
