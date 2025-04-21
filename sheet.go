@@ -182,6 +182,10 @@ func (s *Sheet) NextCell() bool {
 			case "v":
 				isV = true
 			}
+		case *xml.EndElement:
+			if token.Name.Local == "row" {
+				return false
+			}
 		case xml.CharData:
 			if !isV {
 				break
