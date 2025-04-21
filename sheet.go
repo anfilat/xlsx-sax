@@ -136,6 +136,8 @@ func (s *Sheet) NextCell() bool {
 	s.cellFormat = 0
 
 	isV := false
+	isIs := false
+	isT := false
 
 	t, err := s.decoder.Token()
 	for err == nil {
@@ -179,21 +181,33 @@ func (s *Sheet) NextCell() bool {
 				}
 
 				s.Col = columnIndex(cell)
+				s.cellValue = nil
 			case "v":
 				isV = true
+			case "is":
+				isIs = true
+			case "t":
+				isT = true
 			}
-		case *xml.EndElement:
-			if token.Name.Local == "row" {
+		case xml.EndElement:
+			switch token.Name.Local {
+			case "c":
+				return true
+			case "row":
 				return false
+			case "v":
+				isV = false
+			case "is":
+				isIs = false
+			case "t":
+				isT = false
 			}
 		case xml.CharData:
-			if !isV {
+			if !(isV || (isIs && isT)) {
 				break
 			}
 
-			s.cellValue = token
-
-			return true
+			s.cellValue = token.Copy()
 		}
 
 		t, err = s.decoder.Token()
