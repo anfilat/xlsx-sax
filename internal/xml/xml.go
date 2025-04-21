@@ -11,7 +11,6 @@ package xml
 //    XML name spaces: https://www.w3.org/TR/REC-xml-names/
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -151,7 +150,11 @@ type Decoder struct {
 	// the attribute xmlns="DefaultSpace".
 	DefaultSpace string
 
-	r              io.ByteReader
+	r              io.Reader
+	data           []byte
+	dataR          int
+	dataW          int
+	dataErr        error
 	t              TokenReader
 	buf            bytes.Buffer
 	stk            *stack
@@ -159,7 +162,6 @@ type Decoder struct {
 	needClose      bool
 	toClose        Name
 	nextToken      Token
-	nextByte       int
 	ns             map[string]string
 	err            error
 	unmarshalDepth int
@@ -174,13 +176,15 @@ type Decoder struct {
 func NewDecoder(r io.Reader) *Decoder {
 	d := &Decoder{
 		ns:           make(map[string]string),
-		nextByte:     -1,
 		Strict:       true,
 		startElement: &StartElement{},
 		endElement:   &EndElement{},
 		charData:     &CharData{},
+		r:            r,
+		data:         make([]byte, 4096),
+		dataR:        0,
+		dataW:        0,
 	}
-	d.switchToReader(r)
 	return d
 }
 
@@ -317,18 +321,6 @@ func (d *Decoder) translate(n *Name, isElementName bool) {
 		n.Space = v
 	} else if n.Space == "" {
 		n.Space = d.DefaultSpace
-	}
-}
-
-func (d *Decoder) switchToReader(r io.Reader) {
-	// Get efficient byte at a time reader.
-	// Assume that if reader has its own
-	// ReadByte, it's efficient enough.
-	// Otherwise, use bufio.
-	if rb, ok := r.(io.ByteReader); ok {
-		d.r = rb
-	} else {
-		d.r = bufio.NewReader(r)
 	}
 }
 
@@ -531,7 +523,7 @@ func (d *Decoder) rawToken() (Token, error) {
 
 	if b != '<' {
 		// Text section.
-		d.ungetc(b)
+		d.ungetc()
 		data := d.text(-1, false)
 		if data == nil {
 			return nil, d.err
@@ -732,7 +724,7 @@ func (d *Decoder) rawToken() (Token, error) {
 	}
 
 	// Must be an open element like <a href="foo">
-	d.ungetc(b)
+	d.ungetc()
 
 	var (
 		name  Name
@@ -766,7 +758,7 @@ func (d *Decoder) rawToken() (Token, error) {
 		if b == '>' {
 			break
 		}
-		d.ungetc(b)
+		d.ungetc()
 
 		a := Attr{}
 		if a.Name, ok = d.nsname(); !ok {
@@ -784,7 +776,7 @@ func (d *Decoder) rawToken() (Token, error) {
 				d.err = d.syntaxError("attribute name without = in element")
 				return nil, d.err
 			}
-			d.ungetc(b)
+			d.ungetc()
 			a.Value = a.Name.Local
 		} else {
 			d.space()
@@ -818,7 +810,7 @@ func (d *Decoder) attrval() []byte {
 		return nil
 	}
 	// Handle unquoted attribute values for unstrict parsers
-	d.ungetc(b)
+	d.ungetc()
 	d.buf.Reset()
 	for {
 		b, ok = d.mustgetc()
@@ -830,7 +822,7 @@ func (d *Decoder) attrval() []byte {
 			'0' <= b && b <= '9' || b == '_' || b == ':' || b == '-' {
 			d.buf.WriteByte(b)
 		} else {
-			d.ungetc(b)
+			d.ungetc()
 			break
 		}
 	}
@@ -847,7 +839,7 @@ func (d *Decoder) space() {
 		switch b {
 		case ' ', '\r', '\n', '\t':
 		default:
-			d.ungetc(b)
+			d.ungetc()
 			return
 		}
 	}
@@ -858,18 +850,16 @@ func (d *Decoder) space() {
 // and leave the error in d.err.
 // Maintain line number.
 func (d *Decoder) getc() (b byte, ok bool) {
+	if d.err == nil && d.dataR == d.dataW {
+		d.fillData()
+	}
+
 	if d.err != nil {
 		return 0, false
 	}
-	if d.nextByte >= 0 {
-		b = byte(d.nextByte)
-		d.nextByte = -1
-	} else {
-		b, d.err = d.r.ReadByte()
-		if d.err != nil {
-			return 0, false
-		}
-	}
+
+	b = d.data[d.dataR]
+	d.dataR++
 	return b, true
 }
 
@@ -887,8 +877,17 @@ func (d *Decoder) mustgetc() (b byte, ok bool) {
 }
 
 // Unread a single byte.
-func (d *Decoder) ungetc(b byte) {
-	d.nextByte = int(b)
+func (d *Decoder) ungetc() {
+	d.dataR--
+}
+
+func (d *Decoder) fillData() {
+	n, err := d.r.Read(d.data)
+	d.dataR = 0
+	d.dataW = n
+	if err != nil {
+		d.err = err
+	}
 }
 
 var entity = map[string]rune{
@@ -938,7 +937,7 @@ Input:
 				d.err = d.syntaxError("unescaped < inside quoted string")
 				return nil
 			}
-			d.ungetc('<')
+			d.ungetc()
 			break Input
 		}
 		if quote >= 0 && b == byte(quote) {
@@ -981,7 +980,7 @@ Input:
 					}
 				}
 				if b != ';' {
-					d.ungetc(b)
+					d.ungetc()
 				} else {
 					s := string(d.buf.Bytes()[start:])
 					d.buf.WriteByte(';')
@@ -992,7 +991,7 @@ Input:
 					}
 				}
 			} else {
-				d.ungetc(b)
+				d.ungetc()
 				if !d.readName() {
 					if d.err != nil {
 						return nil
@@ -1002,7 +1001,7 @@ Input:
 					return nil
 				}
 				if b != ';' {
-					d.ungetc(b)
+					d.ungetc()
 				} else {
 					name := d.buf.Bytes()[before+1:]
 					d.buf.WriteByte(';')
@@ -1119,27 +1118,33 @@ func (d *Decoder) name() (s string, ok bool) {
 // The name is delimited by any single-byte character not valid in names.
 // All multi-byte characters are accepted; the caller must check their validity.
 func (d *Decoder) readName() (ok bool) {
-	var b byte
-	if b, ok = d.mustgetc(); !ok {
-		return
-	}
-	if b < utf8.RuneSelf && !isNameByte(b) {
-		d.ungetc(b)
-		return false
-	}
-	d.buf.WriteByte(b)
-
+	result := false
 	for {
-		if b, ok = d.mustgetc(); !ok {
-			return
+		if d.err == nil && d.dataR == d.dataW {
+			d.fillData()
 		}
-		if b < utf8.RuneSelf && !isNameByte(b) {
-			d.ungetc(b)
+
+		if d.err != nil {
+			return false
+		}
+
+		start := d.dataR
+		for d.dataR < d.dataW {
+			b := d.data[d.dataR]
+			if b < utf8.RuneSelf && !isNameByte(b) {
+				break
+			}
+			d.dataR++
+		}
+		if d.dataR > start {
+			d.buf.Write(d.data[start:d.dataR])
+			result = true
+		}
+		if d.dataR < d.dataW {
 			break
 		}
-		d.buf.WriteByte(b)
 	}
-	return true
+	return result
 }
 
 func isNameByte(c byte) bool {
@@ -1163,30 +1168,6 @@ func isName(s []byte) bool {
 	for n < len(s) {
 		s = s[n:]
 		c, n = utf8.DecodeRune(s)
-		if c == utf8.RuneError && n == 1 {
-			return false
-		}
-		if !unicode.Is(first, c) && !unicode.Is(second, c) {
-			return false
-		}
-	}
-	return true
-}
-
-func isNameString(s string) bool {
-	if len(s) == 0 {
-		return false
-	}
-	c, n := utf8.DecodeRuneInString(s)
-	if c == utf8.RuneError && n == 1 {
-		return false
-	}
-	if !unicode.Is(first, c) {
-		return false
-	}
-	for n < len(s) {
-		s = s[n:]
-		c, n = utf8.DecodeRuneInString(s)
 		if c == utf8.RuneError && n == 1 {
 			return false
 		}
