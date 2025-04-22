@@ -1116,10 +1116,6 @@ func (d *Decoder) name() (s string, ok bool) {
 			}
 		}
 
-		if d.err != nil {
-			return "", false
-		}
-
 		for p < d.dataW {
 			b := d.data[p]
 			if b < utf8.RuneSelf && !isNameByte(b) {
