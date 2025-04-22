@@ -832,7 +832,6 @@ var entity = map[string]string{
 
 // Read plain text section (XML calls it character data).
 // If quote >= 0, we are in a quoted string and need to find the matching quote.
-// If cdata == true, we are in a <![CDATA[ section and need to find ]]>.
 // On failure return nil and leave the error in d.err.
 func (d *Decoder) text(quote int) []byte {
 	var b0, b1 byte
@@ -1124,29 +1123,33 @@ func (d *Decoder) name() (s string, ok bool) {
 // Read a name and append its bytes to d.buf.
 // The name is delimited by any single-byte character not valid in names.
 // All multi-byte characters are accepted; the caller must check their validity.
-func (d *Decoder) readName() (ok bool) {
+func (d *Decoder) readName() bool {
+	if d.err != nil {
+		return false
+	}
+
 	result := false
 	for {
-		if d.err == nil && d.dataR == d.dataW {
+		if d.dataR == d.dataW {
 			d.fillData()
+			if d.err != nil {
+				return false
+			}
 		}
 
-		if d.err != nil {
-			return false
-		}
-
-		start := d.dataR
-		for d.dataR < d.dataW {
-			b := d.data[d.dataR]
+		p := d.dataR
+		for p < d.dataW {
+			b := d.data[p]
 			if b < utf8.RuneSelf && !isNameByte(b) {
 				break
 			}
-			d.dataR++
+			p++
 		}
-		if d.dataR > start {
-			d.buf.Write(d.data[start:d.dataR])
+		if p > d.dataR {
+			d.buf.Write(d.data[d.dataR:p])
 			result = true
 		}
+		d.dataR = p
 		if d.dataR < d.dataW {
 			break
 		}
