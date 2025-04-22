@@ -838,21 +838,34 @@ func (d *Decoder) text(quote int) []byte {
 	d.buf.Reset()
 Input:
 	for {
-		b, ok := d.getc()
-		if !ok {
-			break Input
+		if d.err != nil {
+			break
 		}
-		if b != '<' && b != ']' && b != '>' && b != '&' && b != '\r' && b != '\n' && (quote == -1 || b != byte(quote)) && d.dataR < d.dataW {
-			p := d.dataR
-			c := d.data[p]
-			for c != '<' && c != ']' && c != '>' && c != '&' && c != '\r' && c != '\n' && (quote == -1 || c != byte(quote)) && p+1 < d.dataW {
-				p++
-				c = d.data[p]
+
+		if d.dataR == d.dataW {
+			d.fillData()
+			if d.err != nil {
+				break
 			}
-			d.buf.Write(d.data[d.dataR-1 : p])
-			b = d.data[p]
-			d.dataR = p + 1
 		}
+
+		p := d.dataR
+		b := d.data[p]
+		if quote == -1 {
+			for b != '<' && b != ']' && b != '>' && b != '&' && b != '\r' && b != '\n' && p+1 < d.dataW {
+				p++
+				b = d.data[p]
+			}
+		} else {
+			for b != byte(quote) && b != '<' && b != ']' && b != '>' && b != '&' && b != '\r' && b != '\n' && p+1 < d.dataW {
+				p++
+				b = d.data[p]
+			}
+		}
+		if p > d.dataR {
+			d.buf.Write(d.data[d.dataR:p])
+		}
+		d.dataR = p + 1
 
 		// <![CDATA[ section ends with ]]>.
 		// It is an error for ]]> to appear in ordinary text,
@@ -868,11 +881,11 @@ Input:
 				d.err = d.syntaxError("unescaped < inside quoted string")
 				return nil
 			}
-			d.ungetc()
-			break Input
+			d.dataR--
+			break
 		}
 		if quote >= 0 && b == byte(quote) {
-			break Input
+			break
 		}
 		if b == '&' {
 			// Read escaped character expression up to semicolon.
