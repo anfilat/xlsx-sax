@@ -17,6 +17,9 @@ type Sheet struct {
 	date1904      bool
 	err           error
 
+	isFutureRow bool
+	futureRow   int
+
 	cellValue  []byte
 	cellType   cellType
 	cellFormat int
@@ -106,7 +109,11 @@ func (s *Sheet) Err() error {
 
 func (s *Sheet) SkipRow() error {
 	s.NextRow()
-	return s.err
+	if s.err != nil {
+		return s.err
+	}
+
+	return s.decoder.Skip()
 }
 
 func (s *Sheet) NextRow() bool {
@@ -114,37 +121,20 @@ func (s *Sheet) NextRow() bool {
 		return false
 	}
 
-	t, err := s.decoder.Token()
-	for err == nil {
-		switch token := t.(type) {
-		case *xml.StartElement:
-			if token.Name.Local == "row" {
-				for _, a := range token.Attr {
-					if a.Name.Local == "r" {
-						row, er := strconv.Atoi(string(a.Value.Bytes()))
-						if er != nil {
-							s.err = er
-							return false
-						}
-						s.Row = row - 1
-						s.Col = 0
-						break
-					}
-				}
-				return true
-			}
-		case *xml.EndElement:
-			if token.Name.Local == "sheetData" {
-				s.err = io.EOF
-				return false
-			}
-		}
-
-		t, err = s.decoder.Token()
+	if s.isFutureRow {
+		s.isFutureRow = false
+		s.Row = s.futureRow
+		return true
 	}
 
-	s.err = err
-	return false
+	row, err := s.nextRow()
+	if err != nil {
+		s.err = err
+		return false
+	}
+
+	s.Row = row
+	return true
 }
 
 func (s *Sheet) NextCell() bool {
@@ -182,7 +172,7 @@ func (s *Sheet) NextCell() bool {
 							s.cellType = cellTypeNumeric
 						}
 					case "s":
-						s.cellFormat, err = strconv.Atoi(string(a.Value.Bytes()))
+						s.cellFormat, err = strconv.Atoi(a.Value.String())
 						if err != nil {
 							s.err = ErrIncorrectSheet
 							return false
@@ -210,7 +200,17 @@ func (s *Sheet) NextCell() bool {
 			case "c":
 				return true
 			case "row":
-				return false
+				row, er := s.nextRow()
+				if er != nil {
+					s.err = er
+					return false
+				}
+
+				if row != s.Row {
+					s.isFutureRow = true
+					s.futureRow = row
+					return false
+				}
 			case "v":
 				isV = false
 			case "is":
@@ -231,6 +231,39 @@ func (s *Sheet) NextCell() bool {
 
 	s.err = err
 	return false
+}
+
+func (s *Sheet) nextRow() (int, error) {
+	t, err := s.decoder.Token()
+	for err == nil {
+		switch token := t.(type) {
+		case *xml.StartElement:
+			if token.Name.Local == "row" {
+				row, er := parseRowNumber(token.Attr)
+				if er != nil {
+					return 0, er
+				}
+				return row - 1, nil
+			}
+		case *xml.EndElement:
+			if token.Name.Local == "sheetData" {
+				return 0, io.EOF
+			}
+		}
+
+		t, err = s.decoder.Token()
+	}
+
+	return 0, err
+}
+
+func parseRowNumber(attrs []xml.Attr) (int, error) {
+	for _, attr := range attrs {
+		if attr.Name.Local == "r" {
+			return strconv.Atoi(attr.Value.String())
+		}
+	}
+	return 0, ErrRowMissingR
 }
 
 func (s *Sheet) CellValue() (string, error) {

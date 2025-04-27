@@ -17,4 +17,5 @@ var (
 	ErrInvalidBool           = errors.New("invalid value in bool cell")
 	ErrInvalidFormat         = errors.New("invalid or unsupported format")
 	ErrNoClosingQuote        = errors.New("no closing quote found")
+	ErrRowMissingR           = errors.New("row element missing 'r' attribute")
 )
