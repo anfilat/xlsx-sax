@@ -108,12 +108,12 @@ func (s *Sheet) Err() error {
 }
 
 func (s *Sheet) SkipRow() error {
-	s.NextRow()
-	if s.err != nil {
-		return s.err
+	if s.NextRow() {
+		for s.NextCell() {
+		}
 	}
 
-	return s.decoder.Skip()
+	return s.err
 }
 
 func (s *Sheet) NextRow() bool {

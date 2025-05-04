@@ -238,6 +238,48 @@ func TestMultiRow(t *testing.T) {
 	require.ErrorIs(t, err, io.EOF)
 }
 
+func TestMultiRow2(t *testing.T) {
+	// Read the file
+	data, err := os.ReadFile("testdata/multi_row.xlsx")
+	require.NoError(t, err)
+
+	// Create a new XLSX reader
+	br := bytes.NewReader(data)
+	xlsx, err := New(br, br.Size())
+	require.NoError(t, err)
+
+	// Open the first sheet
+	sheet, err := xlsx.OpenSheetByOrder(0)
+	require.NoError(t, err)
+	defer sheet.Close()
+
+	// Skip first row
+	err = sheet.SkipRow()
+	require.NoError(t, err)
+
+	// Check second row
+	isRow := sheet.NextRow()
+	require.True(t, isRow)
+
+	expectedSecondRow := []string{"Some text", "1245237", "something", "5", "Filled"}
+	for i, expected := range expectedSecondRow {
+		isCell := sheet.NextCell()
+		require.True(t, isCell)
+		val, err := sheet.CellValue()
+		require.NoError(t, err)
+		require.Equal(t, expected, val)
+		require.Equal(t, i, sheet.Col)
+	}
+
+	// Verify there are no more rows
+	isRow = sheet.NextRow()
+	require.False(t, isRow)
+
+	// Check for errors
+	err = sheet.Err()
+	require.ErrorIs(t, err, io.EOF)
+}
+
 func BenchmarkXlsx1(b *testing.B) {
 	data, _ := os.ReadFile("testdata/test1.xlsx")
 	br := bytes.NewReader(data)
